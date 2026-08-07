@@ -61,7 +61,6 @@ flutter:
   assets:
     - assets/videos/diaryLoading.mp4
     - assets/videos/diaryOpen.mp4
-    - assets/videos/genshin_intro.mp4
 
   # To add assets to your application, add an assets section, like this:
   # assets:

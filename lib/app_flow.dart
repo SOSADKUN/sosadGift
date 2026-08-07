@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'screens/diary_loading_screen.dart';
 import 'screens/diary_open_screen.dart';
-import 'screens/genshin_video_screen.dart';
 import 'screens/story_recap_screen.dart';
 import 'screens/old_gift_video_screen.dart';
 import 'screens/games/game_hub_screen.dart';
@@ -10,13 +9,9 @@ import 'screens/password_screen.dart';
 import 'screens/gift_reveal_screen.dart';
 import 'screens/digital_cake_screen.dart';
 
-/// One entry per "chapter" of the experience, in the exact order you
-/// described. Reorder / insert / remove entries here and the whole flow
-/// updates — you never touch Navigator.push by hand.
 enum FlowStep {
   diaryLoading, // mp4 1: loading screen
   diaryOpen, // mp4 2: diary opens
-  genshinVideo, // mp4 3
   storyRecap, // 4-year story: 认识/驾车/bhotel/PD
   oldGiftVideo, // old gift video playback
   gameHub, // 3(4) mini games -> unlocks the code
@@ -28,7 +23,6 @@ enum FlowStep {
 const List<FlowStep> kFlowOrder = [
   FlowStep.diaryLoading,
   FlowStep.diaryOpen,
-  FlowStep.genshinVideo,
   FlowStep.storyRecap,
   FlowStep.oldGiftVideo,
   FlowStep.gameHub,
@@ -64,8 +58,6 @@ class _AppFlowState extends State<AppFlow> {
         return DiaryLoadingScreen(onComplete: _next);
       case FlowStep.diaryOpen:
         return DiaryOpenScreen(onComplete: _next);
-      case FlowStep.genshinVideo:
-        return GenshinVideoScreen(onComplete: _next);
       case FlowStep.storyRecap:
         return StoryRecapScreen(onComplete: _next);
       case FlowStep.oldGiftVideo:
