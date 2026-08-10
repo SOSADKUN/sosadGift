@@ -28,33 +28,42 @@ class _PasswordScreenState extends State<PasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '输入密码解锁',
-              style: TextStyle(color: Colors.white, fontSize: 22),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _controller,
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 24, letterSpacing: 8),
-              decoration: InputDecoration(
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white54),
-                ),
-                errorText: _error,
+    // Material wrapper gives TextField/ElevatedButton the ancestor they need
+    // to paint ink, cursor, selection highlight, etc.
+    return Material(
+      color: Colors.transparent,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '输入密码解锁',
+                style: TextStyle(color: Colors.white, fontSize: 22),
               ),
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(onPressed: _submit, child: const Text('确认')),
-          ],
+              const SizedBox(height: 24),
+              TextField(
+                controller: _controller,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  letterSpacing: 8,
+                ),
+                decoration: InputDecoration(
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white54),
+                  ),
+                  errorText: _error,
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(onPressed: _submit, child: const Text('确认')),
+            ],
+          ),
         ),
       ),
     );
