@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/story_entry.dart';
+import '../../models/story_entry.dart';
 
 class StoryRecapScreen extends StatefulWidget {
   final VoidCallback onComplete;
