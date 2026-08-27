@@ -37,6 +37,10 @@ dependencies:
   video_player: ^2.11.1
   permission_handler: ^13.0.0
   record: ^7.1.1
+  supabase_flutter: ^2.17.2
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
