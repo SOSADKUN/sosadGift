@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'views/pages/hom_page.dart';
+import 'views/app_flow.dart';
 import 'controllers/supabase_service.dart';
 
 Future<void> main() async {
@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: Colors.black,
       ),
-      home: const HomePage(),
+      home: const AppFlow(),
     );
   }
 }

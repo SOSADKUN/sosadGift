@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../controllers/ticket_service.dart';
+import 'package:gift/controllers/ticket_service.dart';
 
 class QrDisplayPage extends StatefulWidget {
   const QrDisplayPage({super.key});

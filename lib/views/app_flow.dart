@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/diary_loading_screen.dart';
 import 'screens/diary_open_screen.dart';
 import 'screens/story_recap_screen.dart';
-import 'screens/old_gift_video_screen.dart';
+import 'screens/gift_intro_screen.dart';
 import 'screens/games/game_hub_screen.dart';
 import 'screens/password_screen.dart';
 import 'screens/gift_reveal_screen.dart';
@@ -13,7 +13,7 @@ enum FlowStep {
   diaryLoading, // mp4 1: loading screen
   diaryOpen, // mp4 2: diary opens
   storyRecap, // 4-year story: 认识/驾车/bhotel/PD
-  oldGiftVideo, // old gift video playback
+  giftIntro, // black screen + bgm + popping sentences leading into the games
   gameHub, // 3(4) mini games -> unlocks the code
   password, // enter 0917
   giftReveal, // gift voucher reveal
@@ -24,7 +24,7 @@ const List<FlowStep> kFlowOrder = [
   FlowStep.diaryLoading,
   FlowStep.diaryOpen,
   FlowStep.storyRecap,
-  FlowStep.oldGiftVideo,
+  FlowStep.giftIntro,
   FlowStep.gameHub,
   FlowStep.password,
   FlowStep.giftReveal,
@@ -60,8 +60,8 @@ class _AppFlowState extends State<AppFlow> {
         return DiaryOpenScreen(onComplete: _next);
       case FlowStep.storyRecap:
         return StoryRecapScreen(onComplete: _next);
-      case FlowStep.oldGiftVideo:
-        return OldGiftVideoScreen(onComplete: _next);
+      case FlowStep.giftIntro:
+        return GiftIntroScreen(onComplete: _next);
       case FlowStep.gameHub:
         return GameHubScreen(onAllGamesComplete: _next);
       case FlowStep.password:

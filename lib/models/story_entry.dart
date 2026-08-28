@@ -1,37 +1,56 @@
+class StoryStep {
+  final String sentence;
+  final String? imageAsset; // fill in the real photo path later
+
+  const StoryStep({required this.sentence, this.imageAsset});
+}
+
 class StoryEntry {
-  final String year; // e.g. "第一年"
-  final String title; // short headline
-  final String body; // the story text
-  final String? imageAsset; // optional photo for this year
+  final String year;
+  final String title;
+  final List<StoryStep> steps;
 
   const StoryEntry({
     required this.year,
     required this.title,
-    required this.body,
-    this.imageAsset,
+    required this.steps,
   });
 }
 
-/// Your 4-year recap — fill in the real text/photos here.
+/// Mock placeholder copy — swap in the real story text/photos later.
 final List<StoryEntry> kStoryEntries = [
   const StoryEntry(
-    year: '第一年',
-    title: '认识',
-    body: '因为玩原神认识了你，然后每一年的生日我都没有缺席。',
+    year: 'Year One',
+    title: 'Mock title one',
+    steps: [
+      StoryStep(sentence: 'This is the first mock sentence for year one.'),
+      StoryStep(sentence: 'This is the second mock sentence for year one.'),
+      StoryStep(sentence: 'This is the third mock sentence for year one.'),
+    ],
   ),
   const StoryEntry(
-    year: '第二年',
-    title: '驾车',
-    body: 'TODO: 驾车 + 一串串 的故事', // 一串串 candy/snack story
+    year: 'Year Two',
+    title: 'Mock title two',
+    steps: [
+      StoryStep(sentence: 'This is the first mock sentence for year two.'),
+      StoryStep(sentence: 'This is the second mock sentence for year two.'),
+    ],
   ),
   const StoryEntry(
-    year: '第三年',
-    title: 'B Hotel',
-    body: 'TODO: 仓鼠 的故事',
+    year: 'Year Three',
+    title: 'Mock title three',
+    steps: [
+      StoryStep(sentence: 'This is the first mock sentence for year three.'),
+      StoryStep(sentence: 'This is the second mock sentence for year three.'),
+      StoryStep(sentence: 'This is the third mock sentence for year three.'),
+    ],
   ),
   const StoryEntry(
-    year: '第四年',
-    title: 'PD',
-    body: 'TODO: PD 偷他的 IG 照片 的故事',
+    year: 'Year Four',
+    title: 'Mock title four',
+    steps: [
+      StoryStep(sentence: 'This is the first mock sentence for year four.'),
+      StoryStep(sentence: 'This is the second mock sentence for year four.'),
+    ],
   ),
 ];

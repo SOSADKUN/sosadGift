@@ -51,7 +51,11 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   late final AnimationController _blowController; // particle burst / smoke
   late final AnimationController _glowController; // ambient light pulse
 
+  late final AnimationController _flyController; // digits converge to center
+  late final AnimationController _crossfadeController; // digits -> cake
+
   late final List<_Particle> _particles;
+  late final List<_DigitParticle> _digits;
 
   @override
   void initState() {
@@ -73,6 +77,27 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     )..repeat(reverse: true);
 
     _particles = List.generate(26, (i) => _Particle(seed: i));
+
+    _flyController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _crossfadeController.forward();
+        }
+      });
+
+    _crossfadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _digits = List.generate(40, (i) => _DigitParticle(seed: i));
+
+    // Brief black screen before the digits start flying in.
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) _flyController.forward();
+    });
 
     _initMic();
   }
@@ -136,6 +161,8 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     _flameController.dispose();
     _blowController.dispose();
     _glowController.dispose();
+    _flyController.dispose();
+    _crossfadeController.dispose();
     _audioSub?.cancel();
     _recorder.dispose();
     super.dispose();
@@ -143,6 +170,98 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Cake scene fades in as the digits converge and dissolve.
+        AnimatedBuilder(
+          animation: _crossfadeController,
+          builder: (context, child) => Opacity(
+            opacity: _crossfadeController.value,
+            child: IgnorePointer(
+              ignoring: _crossfadeController.value < 1,
+              child: child,
+            ),
+          ),
+          child: _buildCakeScene(),
+        ),
+
+        // Digits flying in from off-screen, converging to the center, then
+        // dissolving away to reveal the cake underneath.
+        AnimatedBuilder(
+          animation: Listenable.merge([_flyController, _crossfadeController]),
+          builder: (context, _) {
+            final introOpacity = 1 - _crossfadeController.value;
+            if (introOpacity <= 0) return const SizedBox.shrink();
+            final flashOpacity = _crossfadeController.value < 0.3
+                ? (1 - _crossfadeController.value / 0.3) * 0.6
+                : 0.0;
+            return Opacity(
+              opacity: introOpacity,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = Size(constraints.maxWidth, constraints.maxHeight);
+                  return Stack(
+                    children: [
+                      for (final d in _digits)
+                        _buildDigit(d, size, _flyController.value),
+                      Center(
+                        child: Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: flashOpacity),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDigit(_DigitParticle d, Size size, double progress) {
+    final localProgress =
+        ((progress - d.delay) / (1 - d.delay)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutCubic.transform(localProgress);
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final halfDiagonal = sqrt(size.width * size.width + size.height * size.height) / 2;
+    final start = center +
+        Offset(cos(d.startAngle), sin(d.startAngle)) * (d.startRadius * halfDiagonal);
+    final target = center + d.targetJitter;
+    final pos = Offset.lerp(start, target, eased)!;
+    final scale = 1.0 - eased * 0.5;
+    final opacity = localProgress < 0.08 ? localProgress / 0.08 : 1.0;
+
+    return Positioned(
+      left: pos.dx - d.fontSize / 2,
+      top: pos.dy - d.fontSize / 2,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform.scale(
+          scale: scale,
+          child: Text(
+            d.char,
+            style: TextStyle(
+              color: d.color,
+              fontSize: d.fontSize,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCakeScene() {
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -296,6 +415,37 @@ class CustomPaintCakeWrapper extends StatelessWidget {
       painter: _CakePainter(),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Digit intro (0/1 digits flying in from off-screen, converging to center)
+// ---------------------------------------------------------------------------
+
+class _DigitParticle {
+  final String char;
+  final double startAngle;
+  final double startRadius; // multiple of the screen's half-diagonal
+  final Offset targetJitter;
+  final double fontSize;
+  final Color color;
+  final double delay; // staggers when this digit starts moving, 0..1
+
+  _DigitParticle({required int seed})
+      : char = Random(seed).nextBool() ? '0' : '1',
+        startAngle = Random(seed + 1).nextDouble() * 2 * pi,
+        startRadius = 1.0 + Random(seed + 2).nextDouble() * 0.6,
+        targetJitter = Offset(
+          (Random(seed + 3).nextDouble() - 0.5) * 40,
+          (Random(seed + 4).nextDouble() - 0.5) * 40,
+        ),
+        fontSize = 14 + Random(seed + 5).nextDouble() * 14,
+        color = const [
+          Colors.pinkAccent,
+          Colors.white,
+          Color(0xFFB388FF),
+          Color(0xFF80D8FF),
+        ][seed % 4],
+        delay = Random(seed + 6).nextDouble() * 0.35;
 }
 
 // ---------------------------------------------------------------------------

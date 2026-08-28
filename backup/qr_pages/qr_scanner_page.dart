@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../controllers/ticket_service.dart';
+import 'package:gift/controllers/ticket_service.dart';
 import 'scan_success_page.dart';
 
 class QrScannerPage extends StatefulWidget {
