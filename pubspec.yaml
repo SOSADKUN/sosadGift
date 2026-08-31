@@ -68,6 +68,12 @@ flutter:
   assets:
     - assets/videos/diaryLoading.mp4
     - assets/videos/diaryOpen.mp4
+    - assets/videos/gameHub.mp4
+    - assets/photos/character.gif
+    - assets/photos/game1.png
+    - assets/photos/game2.png
+    - assets/photos/game3.png
+    - assets/photos/game4.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

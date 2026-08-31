@@ -178,6 +178,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
       title: '接爱心',
       level: _levelIndex + 1,
       levelCount: _levels.length,
+      backgroundImage: 'assets/photos/game3.png',
       child: LayoutBuilder(
         builder: (context, constraints) {
           return GestureDetector(

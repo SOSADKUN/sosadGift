@@ -107,6 +107,7 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
       title: '记忆配对',
       level: _levelIndex + 1,
       levelCount: _levels.length,
+      backgroundImage: 'assets/photos/game2.png',
       child: Stack(
         children: [
           Padding(

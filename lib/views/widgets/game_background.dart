@@ -8,6 +8,7 @@ class GameBackground extends StatelessWidget {
   final String title;
   final int level;
   final int levelCount;
+  final String? backgroundImage;
 
   const GameBackground({
     super.key,
@@ -15,70 +16,77 @@ class GameBackground extends StatelessWidget {
     required this.title,
     required this.level,
     required this.levelCount,
+    this.backgroundImage,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF2E1A3C), Color(0xFF4B2354), Color(0xFF6B2D5C)],
-          ),
-        ),
-        child: Stack(
-          children: [
-            const Positioned(top: 50, left: 26, child: _Sparkle('⭐', 18)),
-            const Positioned(top: 100, right: 34, child: _Sparkle('✨', 16)),
-            const Positioned(bottom: 70, left: 42, child: _Sparkle('⭐', 14)),
-            const Positioned(bottom: 130, right: 26, child: _Sparkle('✨', 20)),
-            SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new,
-                              color: Colors.white70, size: 18),
-                          onPressed: () => Navigator.of(context).maybePop(),
-                        ),
-                        Expanded(
-                          child: Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            'Lv $level/$levelCount',
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(child: child),
-                ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (backgroundImage != null)
+            Image.asset(backgroundImage!, fit: BoxFit.cover)
+          else
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2E1A3C), Color(0xFF4B2354), Color(0xFF6B2D5C)],
+                ),
               ),
             ),
-          ],
-        ),
+          if (backgroundImage != null)
+            Container(color: Colors.black.withValues(alpha: 0.22)),
+          const Positioned(top: 50, left: 26, child: _Sparkle('⭐', 18)),
+          const Positioned(top: 100, right: 34, child: _Sparkle('✨', 16)),
+          const Positioned(bottom: 70, left: 42, child: _Sparkle('⭐', 14)),
+          const Positioned(bottom: 130, right: 26, child: _Sparkle('✨', 20)),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new,
+                            color: Colors.white70, size: 18),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Lv $level/$levelCount',
+                          style:
+                              const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

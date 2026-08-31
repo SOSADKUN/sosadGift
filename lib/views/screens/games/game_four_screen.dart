@@ -128,6 +128,7 @@ class _GameFourScreenState extends State<GameFourScreen> {
       title: '记忆序列',
       level: _levelIndex + 1,
       levelCount: _levels.length,
+      backgroundImage: 'assets/photos/game4.png',
       child: Column(
         children: [
           const SizedBox(height: 12),

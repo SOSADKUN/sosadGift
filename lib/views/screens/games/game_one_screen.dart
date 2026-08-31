@@ -144,6 +144,7 @@ class _GameOneScreenState extends State<GameOneScreen> {
       title: '小鸡毛大作战',
       level: _levelIndex + 1,
       levelCount: _levels.length,
+      backgroundImage: 'assets/photos/game1.png',
       child: LayoutBuilder(
         builder: (context, constraints) {
           return Stack(
