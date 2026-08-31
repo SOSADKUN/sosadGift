@@ -24,11 +24,11 @@ class _GameHubScreenState extends State<GameHubScreen> {
       _games = [
     (onComplete, onLose) =>
         GameOneScreen(onComplete: onComplete, onLose: onLose),
-    (onComplete, onLose) => GameTwoScreen(onComplete: onComplete),
+    (onComplete, onLose) =>
+        GameTwoScreen(onComplete: onComplete, onLose: onLose),
     (onComplete, onLose) =>
         GameThreeScreen(onComplete: onComplete, onLose: onLose),
-    (onComplete, onLose) =>
-        GameFourScreen(onComplete: onComplete, onLose: onLose),
+    (onComplete, onLose) => GameFourScreen(onComplete: onComplete),
   ];
 
   final Set<int> _solved = {};

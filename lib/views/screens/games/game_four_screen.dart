@@ -4,50 +4,45 @@ import 'package:flutter/material.dart';
 import '../../widgets/game_background.dart';
 
 class _LevelConfig {
-  final int length;
-  final Duration stepDuration;
-  const _LevelConfig({required this.length, required this.stepDuration});
+  final int colors;
+  const _LevelConfig({required this.colors});
 }
 
-enum _Phase { showing, input }
-
-/// Simon-says style: watch the sequence light up, then repeat it.
+/// Water sort puzzle: tap a tube to pick up its top color, tap another to
+/// pour it in. Sort every color into its own tube.
 class GameFourScreen extends StatefulWidget {
   final VoidCallback onComplete;
-  final VoidCallback onLose;
 
-  const GameFourScreen({
-    super.key,
-    required this.onComplete,
-    required this.onLose,
-  });
+  const GameFourScreen({super.key, required this.onComplete});
 
   @override
   State<GameFourScreen> createState() => _GameFourScreenState();
 }
 
 class _GameFourScreenState extends State<GameFourScreen> {
+  static const _capacity = 4;
   static const _levels = [
-    _LevelConfig(length: 4, stepDuration: Duration(milliseconds: 600)),
-    _LevelConfig(length: 6, stepDuration: Duration(milliseconds: 500)),
-    _LevelConfig(length: 8, stepDuration: Duration(milliseconds: 420)),
+    _LevelConfig(colors: 4),
+    _LevelConfig(colors: 5),
+    _LevelConfig(colors: 6),
   ];
-
-  static const _icons = ['🌸', '💗', '⭐', '🎈'];
-  static const _colors = [
-    Colors.pinkAccent,
+  static const _palette = [
     Colors.redAccent,
-    Colors.amber,
-    Colors.deepPurpleAccent,
+    Colors.blueAccent,
+    Colors.green,
+    Colors.orange,
+    Colors.purpleAccent,
+    Colors.teal,
+    Colors.pinkAccent,
+    Colors.brown,
   ];
 
   final _rnd = Random();
   int _levelIndex = 0;
-  List<int> _sequence = [];
-  int _playerProgress = 0;
-  int _highlighted = -1;
-  _Phase _phase = _Phase.showing;
+  late List<List<Color>> _tubes;
+  int? _selected;
   String? _message;
+  bool _finished = false;
 
   _LevelConfig get _level => _levels[_levelIndex];
 
@@ -58,62 +53,78 @@ class _GameFourScreenState extends State<GameFourScreen> {
   }
 
   void _startLevel() {
-    _sequence = List.generate(_level.length, (_) => _rnd.nextInt(4));
-    _playerProgress = 0;
-    _message = null;
-    _playShowPhase();
-  }
-
-  Future<void> _playShowPhase() async {
-    setState(() => _phase = _Phase.showing);
-    await Future.delayed(const Duration(milliseconds: 400));
-    for (final index in _sequence) {
-      if (!mounted) return;
-      setState(() => _highlighted = index);
-      await Future.delayed(_level.stepDuration);
-      if (!mounted) return;
-      setState(() => _highlighted = -1);
-      await Future.delayed(const Duration(milliseconds: 150));
-    }
-    if (!mounted) return;
-    setState(() => _phase = _Phase.input);
-  }
-
-  void _onTapButton(int index) {
-    if (_phase != _Phase.input) return;
-
-    if (_sequence[_playerProgress] == index) {
-      setState(() {
-        _highlighted = index;
-        _playerProgress++;
-      });
-      Timer(const Duration(milliseconds: 150), () {
-        if (mounted) setState(() => _highlighted = -1);
-      });
-      if (_playerProgress == _sequence.length) {
-        _levelClear();
+    final colorCount = _level.colors;
+    final blocks = <Color>[];
+    for (int i = 0; i < colorCount; i++) {
+      for (int j = 0; j < _capacity; j++) {
+        blocks.add(_palette[i]);
       }
+    }
+    blocks.shuffle(_rnd);
+
+    _tubes = List.generate(
+      colorCount,
+      (i) => List<Color>.from(blocks.sublist(i * _capacity, (i + 1) * _capacity)),
+    );
+    _tubes.addAll(List.generate(2, (_) => <Color>[]));
+    _selected = null;
+    _message = null;
+    _finished = false;
+  }
+
+  void _selectTube(int index) {
+    if (_finished) return;
+    if (_selected == null) {
+      if (_tubes[index].isEmpty) return;
+      setState(() => _selected = index);
+    } else if (_selected == index) {
+      setState(() => _selected = null);
     } else {
-      setState(() {
-        _phase = _Phase.showing;
-        _message = '再试一次！';
-      });
-      Timer(const Duration(milliseconds: 700), widget.onLose);
+      _pour(_selected!, index);
     }
   }
 
-  void _levelClear() {
+  void _pour(int from, int to) {
+    final src = _tubes[from];
+    final dst = _tubes[to];
+    if (src.isEmpty || dst.length >= _capacity) {
+      setState(() => _selected = null);
+      return;
+    }
+    final color = src.last;
+    if (dst.isNotEmpty && dst.last != color) {
+      setState(() => _selected = null);
+      return;
+    }
+
+    int count = 0;
+    for (int i = src.length - 1; i >= 0 && src[i] == color; i--) {
+      count++;
+    }
+    final moveCount = min(count, _capacity - dst.length);
+
+    setState(() {
+      for (int i = 0; i < moveCount; i++) {
+        dst.add(src.removeLast());
+      }
+      _selected = null;
+    });
+
+    _checkWin();
+  }
+
+  void _checkWin() {
+    final solved = _tubes.every(
+      (t) => t.isEmpty || (t.length == _capacity && t.toSet().length == 1),
+    );
+    if (!solved) return;
+
+    _finished = true;
     if (_levelIndex >= _levels.length - 1) {
-      setState(() {
-        _message = '通关啦！🎉';
-        _phase = _Phase.showing;
-      });
+      setState(() => _message = '通关啦！🎉');
       Timer(const Duration(milliseconds: 700), widget.onComplete);
     } else {
-      setState(() {
-        _message = 'Level ${_levelIndex + 1} 完成！';
-        _phase = _Phase.showing;
-      });
+      setState(() => _message = 'Level ${_levelIndex + 1} 完成！');
       Timer(const Duration(milliseconds: 900), () {
         if (!mounted) return;
         setState(() => _levelIndex++);
@@ -125,19 +136,19 @@ class _GameFourScreenState extends State<GameFourScreen> {
   @override
   Widget build(BuildContext context) {
     return GameBackground(
-      title: '记忆序列',
+      title: '彩虹分类',
       level: _levelIndex + 1,
       levelCount: _levels.length,
       backgroundImage: 'assets/photos/game4.png',
       child: Column(
         children: [
-          const SizedBox(height: 12),
-          Text(
-            _phase == _Phase.showing ? '看好顺序…' : '轮到你了！',
-            style: const TextStyle(color: Colors.white, fontSize: 18),
+          const SizedBox(height: 4),
+          const Text(
+            '点击试管拿起，再点另一个倒入',
+            style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
           if (_message != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               _message!,
               style: const TextStyle(
@@ -147,31 +158,55 @@ class _GameFourScreenState extends State<GameFourScreen> {
             ),
           ],
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: GridView.count(
-              shrinkWrap: true,
-              crossAxisCount: 2,
-              mainAxisSpacing: 20,
-              crossAxisSpacing: 20,
-              children: List.generate(4, (i) {
-                final active = _highlighted == i;
-                return GestureDetector(
-                  onTap: () => _onTapButton(i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    decoration: BoxDecoration(
-                      color:
-                          active ? _colors[i] : _colors[i].withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white24, width: 2),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 16,
+            children: List.generate(_tubes.length, (i) {
+              final tube = _tubes[i];
+              final selected = _selected == i;
+              return GestureDetector(
+                onTap: () => _selectTube(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 42,
+                  height: _capacity * 28 + 12,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.vertical(
+                        bottom: const Radius.circular(16),
+                        top: const Radius.circular(6)),
+                    border: Border.all(
+                      color: selected ? Colors.white : Colors.white38,
+                      width: selected ? 3 : 1.5,
                     ),
-                    alignment: Alignment.center,
-                    child: Text(_icons[i], style: const TextStyle(fontSize: 40)),
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                blurRadius: 10)
+                          ]
+                        : const [],
                   ),
-                );
-              }),
-            ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      for (final color in tube)
+                        Container(
+                          width: double.infinity,
+                          height: 26,
+                          margin: const EdgeInsets.only(top: 2),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
           ),
           const Spacer(),
         ],

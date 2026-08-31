@@ -74,6 +74,8 @@ flutter:
     - assets/photos/game2.png
     - assets/photos/game3.png
     - assets/photos/game4.png
+    - assets/photos/jimao.gif
+    - assets/photos/complete.gif
 
   # To add assets to your application, add an assets section, like this:
   # assets:

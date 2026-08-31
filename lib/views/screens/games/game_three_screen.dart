@@ -3,29 +3,19 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../widgets/game_background.dart';
 
-enum _ItemType { heart, bomb }
-
-class _FallingItem {
-  final _ItemType type;
-  final double x; // 0..1
-  double y = 0; // 0..1
-  _FallingItem({required this.type, required this.x});
-}
-
 class _LevelConfig {
-  final int heartsNeeded;
-  final int lives;
-  final double speed; // fraction of screen height per tick
-  final Duration spawnInterval;
+  final int columns;
+  final int maxHeight;
+  final int targetTier;
   const _LevelConfig({
-    required this.heartsNeeded,
-    required this.lives,
-    required this.speed,
-    required this.spawnInterval,
+    required this.columns,
+    required this.maxHeight,
+    required this.targetTier,
   });
 }
 
-/// Drag the basket to catch falling hearts and dodge the bombs.
+/// Merge-drop: tap a lane to drop the next piece in; matching tiers merge
+/// into the next tier up. Reach the target tier before any lane overflows.
 class GameThreeScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
@@ -41,40 +31,20 @@ class GameThreeScreen extends StatefulWidget {
 }
 
 class _GameThreeScreenState extends State<GameThreeScreen> {
+  static const _tierEmoji = ['🍒', '🍓', '🍇', '🍊', '🍎', '🍉', '🎃', '⭐', '👑'];
   static const _levels = [
-    _LevelConfig(
-        heartsNeeded: 8,
-        lives: 3,
-        speed: 0.006,
-        spawnInterval: Duration(milliseconds: 900)),
-    _LevelConfig(
-        heartsNeeded: 10,
-        lives: 3,
-        speed: 0.008,
-        spawnInterval: Duration(milliseconds: 750)),
-    _LevelConfig(
-        heartsNeeded: 12,
-        lives: 2,
-        speed: 0.010,
-        spawnInterval: Duration(milliseconds: 620)),
+    _LevelConfig(columns: 5, maxHeight: 7, targetTier: 5),
+    _LevelConfig(columns: 5, maxHeight: 6, targetTier: 6),
+    _LevelConfig(columns: 4, maxHeight: 6, targetTier: 7),
   ];
-
-  static const _basketWidth = 0.22;
-  static const _basketY = 0.86;
-  static const _catchBandTop = 0.80;
-  static const _catchBandBottom = 0.92;
+  static const _cellSize = 34.0;
 
   final _rnd = Random();
   int _levelIndex = 0;
-  int _caught = 0;
-  int _lives = 0;
-  double _basketX = 0.5;
-  final List<_FallingItem> _items = [];
-  Timer? _ticker;
-  Timer? _spawner;
-  Timer? _loseTimer;
+  late List<List<int>> _columns;
+  int _currentTier = 1;
   String? _message;
-  bool _busy = false;
+  bool _finished = false;
 
   _LevelConfig get _level => _levels[_levelIndex];
 
@@ -85,73 +55,63 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   }
 
   void _startLevel() {
-    _items.clear();
-    _caught = 0;
-    _lives = _level.lives;
+    _columns = List.generate(_level.columns, (_) => <int>[]);
+    _currentTier = _randomTier();
     _message = null;
-    _busy = false;
-    _ticker?.cancel();
-    _spawner?.cancel();
-    _ticker = Timer.periodic(const Duration(milliseconds: 16), _tick);
-    _spawner = Timer.periodic(_level.spawnInterval, (_) => _spawnItem());
+    _finished = false;
   }
 
-  void _spawnItem() {
-    if (_busy) return;
-    final isBomb = _rnd.nextDouble() < 0.28;
-    _items.add(_FallingItem(
-      type: isBomb ? _ItemType.bomb : _ItemType.heart,
-      x: 0.08 + _rnd.nextDouble() * 0.84,
-    ));
-  }
+  int _randomTier() => 1 + _rnd.nextInt(2);
 
-  void _tick(Timer timer) {
-    if (_busy) return;
-    setState(() {
-      for (final item in _items) {
-        item.y += _level.speed;
-      }
-      for (final item in List.of(_items)) {
-        final inBand = item.y >= _catchBandTop && item.y <= _catchBandBottom;
-        final inBasket = (item.x - _basketX).abs() <= _basketWidth / 2;
-        if (inBand && inBasket) {
-          _items.remove(item);
-          if (item.type == _ItemType.heart) {
-            _caught++;
-            if (_caught >= _level.heartsNeeded) {
-              _levelClear();
-              return;
-            }
-          } else {
-            _lives--;
-            if (_lives <= 0) {
-              _fail();
-              return;
-            }
-          }
+  void _mergeCascade(int col) {
+    bool merged = true;
+    while (merged) {
+      merged = false;
+      final list = _columns[col];
+      for (int i = list.length - 1; i > 0; i--) {
+        if (list[i] == list[i - 1]) {
+          list[i - 1] = list[i - 1] + 1;
+          list.removeAt(i);
+          merged = true;
+          break;
         }
       }
-      _items.removeWhere((item) => item.y > 1.05);
+    }
+  }
+
+  void _drop(int col) {
+    if (_finished) return;
+    setState(() {
+      _columns[col].add(_currentTier);
+      _mergeCascade(col);
     });
+
+    if (_columns.any((c) => c.length > _level.maxHeight)) {
+      _fail();
+      return;
+    }
+    if (_columns.any((c) => c.any((t) => t >= _level.targetTier))) {
+      _levelClear();
+      return;
+    }
+    setState(() => _currentTier = _randomTier());
   }
 
   void _fail() {
-    _busy = true;
-    _ticker?.cancel();
-    _spawner?.cancel();
-    _message = '再试一次！';
-    _loseTimer = Timer(const Duration(milliseconds: 900), widget.onLose);
+    _finished = true;
+    setState(() => _message = '再试一次！');
+    Timer(const Duration(milliseconds: 900), () {
+      if (mounted) widget.onLose();
+    });
   }
 
   void _levelClear() {
-    _busy = true;
-    _ticker?.cancel();
-    _spawner?.cancel();
+    _finished = true;
     if (_levelIndex >= _levels.length - 1) {
-      _message = '通关啦！🎉';
+      setState(() => _message = '通关啦！🎉');
       Timer(const Duration(milliseconds: 700), widget.onComplete);
     } else {
-      _message = 'Level ${_levelIndex + 1} 完成！';
+      setState(() => _message = 'Level ${_levelIndex + 1} 完成！');
       Timer(const Duration(milliseconds: 900), () {
         if (!mounted) return;
         setState(() => _levelIndex++);
@@ -160,79 +120,74 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
     }
   }
 
-  void _moveBasketTo(double fractionX) {
-    setState(() => _basketX = fractionX.clamp(0.08, 0.92));
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    _spawner?.cancel();
-    _loseTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return GameBackground(
-      title: '接爱心',
+      title: '合成大作战',
       level: _levelIndex + 1,
       levelCount: _levels.length,
       backgroundImage: 'assets/photos/game3.png',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanUpdate: (details) => _moveBasketTo(
-                _basketX + details.delta.dx / constraints.maxWidth),
-            onTapDown: (details) => _moveBasketTo(
-                details.localPosition.dx / constraints.maxWidth),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Text(
-                      '💗 $_caught / ${_level.heartsNeeded}   •   ❤️‍🔥 $_lives',
-                      style: const TextStyle(color: Colors.white, fontSize: 18),
-                    ),
-                  ),
-                ),
-                if (_message != null)
-                  Positioned(
-                    top: 50,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Text(
-                        _message!,
-                        style: const TextStyle(
-                            color: Colors.amberAccent,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                for (final item in _items)
-                  Positioned(
-                    left: item.x * constraints.maxWidth - 16,
-                    top: item.y * constraints.maxHeight,
-                    child: Text(
-                      item.type == _ItemType.heart ? '💗' : '💣',
-                      style: const TextStyle(fontSize: 30),
-                    ),
-                  ),
-                Positioned(
-                  left: _basketX * constraints.maxWidth - 28,
-                  top: _basketY * constraints.maxHeight - 28,
-                  child: const Text('🧺', style: TextStyle(fontSize: 56)),
-                ),
-              ],
+      child: Column(
+        children: [
+          const SizedBox(height: 4),
+          Text(
+            '目标: ${_tierEmoji[_level.targetTier - 1]}',
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+          ),
+          if (_message != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _message!,
+              style: const TextStyle(
+                  color: Colors.amberAccent,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold),
             ),
-          );
-        },
+          ],
+          const SizedBox(height: 10),
+          Text(_tierEmoji[_currentTier - 1],
+              style: const TextStyle(fontSize: 36)),
+          const Text('下一个', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Spacer(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(_level.columns, (col) {
+              final stack = _columns[col];
+              return GestureDetector(
+                onTap: () => _drop(col),
+                child: Container(
+                  width: _cellSize + 8,
+                  height: _cellSize * _level.maxHeight,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      for (final tier in stack)
+                        Container(
+                          width: _cellSize,
+                          height: _cellSize,
+                          alignment: Alignment.center,
+                          margin: const EdgeInsets.symmetric(vertical: 1),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(_tierEmoji[tier - 1],
+                              style: const TextStyle(fontSize: 18)),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+          const Spacer(),
+        ],
       ),
     );
   }
