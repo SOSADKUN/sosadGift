@@ -33,11 +33,11 @@ class _GameOneScreenState extends State<GameOneScreen>
     with SingleTickerProviderStateMixin {
   static const _levels = [
     _LevelConfig(
-        targetTaps: 30, seconds: 30, moveDuration: Duration(milliseconds: 1000)),
+        targetTaps: 10, seconds: 30, moveDuration: Duration(milliseconds: 1400)),
     _LevelConfig(
-        targetTaps: 35, seconds: 28, moveDuration: Duration(milliseconds: 800)),
+        targetTaps: 20, seconds: 30, moveDuration: Duration(milliseconds: 1000)),
     _LevelConfig(
-        targetTaps: 40, seconds: 25, moveDuration: Duration(milliseconds: 650)),
+        targetTaps: 30, seconds: 30, moveDuration: Duration(milliseconds: 700)),
   ];
 
   final _rnd = Random();
