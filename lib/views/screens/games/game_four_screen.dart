@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/game_intro_overlay.dart';
 
 class _LevelConfig {
   final int colors;
@@ -12,8 +13,13 @@ class _LevelConfig {
 /// pour it in. Sort every color into its own tube.
 class GameFourScreen extends StatefulWidget {
   final VoidCallback onComplete;
+  final bool showIntro;
 
-  const GameFourScreen({super.key, required this.onComplete});
+  const GameFourScreen({
+    super.key,
+    required this.onComplete,
+    this.showIntro = false,
+  });
 
   @override
   State<GameFourScreen> createState() => _GameFourScreenState();
@@ -43,12 +49,19 @@ class _GameFourScreenState extends State<GameFourScreen> {
   int? _selected;
   String? _message;
   bool _finished = false;
+  late bool _introDone;
 
   _LevelConfig get _level => _levels[_levelIndex];
 
   @override
   void initState() {
     super.initState();
+    _introDone = !widget.showIntro;
+    if (_introDone) _startLevel();
+  }
+
+  void _onIntroStart() {
+    setState(() => _introDone = true);
     _startLevel();
   }
 
@@ -135,7 +148,9 @@ class _GameFourScreenState extends State<GameFourScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GameBackground(
+    return Stack(
+      children: [
+        GameBackground(
       title: '彩虹分类',
       level: _levelIndex + 1,
       levelCount: _levels.length,
@@ -152,7 +167,7 @@ class _GameFourScreenState extends State<GameFourScreen> {
             Text(
               _message!,
               style: const TextStyle(
-                  color: Colors.amberAccent,
+                  color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold),
             ),
@@ -211,6 +226,14 @@ class _GameFourScreenState extends State<GameFourScreen> {
           const Spacer(),
         ],
       ),
+        ),
+        if (!_introDone)
+          GameIntroOverlay(
+            title: '彩虹分类',
+            instructionText: '彩虹分类～ 点击试管拿起颜色，再点另一个试管倒入，把每种颜色都分类到独立的试管里吧～',
+            onStart: _onIntroStart,
+          ),
+      ],
     );
   }
 }

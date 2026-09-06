@@ -20,29 +20,37 @@ class GameHubScreen extends StatefulWidget {
 class _GameHubScreenState extends State<GameHubScreen> {
   // Add/remove games here — one door per entry, in door order
   // [top-left, top-right, bottom-left, bottom-right].
-  late final List<Widget Function(VoidCallback onComplete, VoidCallback onLose)>
-      _games = [
-    (onComplete, onLose) =>
-        GameOneScreen(onComplete: onComplete, onLose: onLose),
-    (onComplete, onLose) =>
-        GameTwoScreen(onComplete: onComplete, onLose: onLose),
-    (onComplete, onLose) =>
-        GameThreeScreen(onComplete: onComplete, onLose: onLose),
-    (onComplete, onLose) => GameFourScreen(onComplete: onComplete),
+  late final List<
+      Widget Function(
+          VoidCallback onComplete, VoidCallback onLose, bool showIntro)> _games = [
+    (onComplete, onLose, showIntro) => GameOneScreen(
+        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
+    (onComplete, onLose, showIntro) => GameTwoScreen(
+        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
+    (onComplete, onLose, showIntro) => GameThreeScreen(
+        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
+    (onComplete, onLose, showIntro) =>
+        GameFourScreen(onComplete: onComplete, showIntro: showIntro),
   ];
 
   final Set<int> _solved = {};
+  // Instructions only need to show the first time each door is opened.
+  final Set<int> _instructionsShown = {};
   _Mood _mood = _Mood.none;
   Timer? _moodTimer;
 
   void _openGame(int index) async {
     if (_solved.contains(index)) return;
 
+    final showIntro = !_instructionsShown.contains(index);
+    _instructionsShown.add(index);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _games[index](
           () => _completeGame(index),
           () => _loseGame(index),
+          showIntro,
         ),
       ),
     );

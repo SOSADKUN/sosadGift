@@ -54,6 +54,17 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  macos:
+    generate: true
+  web:
+    generate: true
+  image_path: "assets/icon/app_icon.png"
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -70,6 +81,7 @@ flutter:
     - assets/videos/diaryOpen.mp4
     - assets/videos/gameHub.mp4
     - assets/photos/character.gif
+    - assets/icon/app_icon.png
     - assets/photos/game1.png
     - assets/photos/game2.png
     - assets/photos/game3.png

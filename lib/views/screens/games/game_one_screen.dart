@@ -2,15 +2,22 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/game_intro_overlay.dart';
 
 class _LevelConfig {
   final int targetTaps;
   final int seconds;
   final Duration moveDuration;
+  // Occasionally spawns a faster feather for variety, instead of every
+  // feather moving at the same speed.
+  final Duration? fastMoveDuration;
+  final double fastChance;
   const _LevelConfig({
     required this.targetTaps,
     required this.seconds,
     required this.moveDuration,
+    this.fastMoveDuration,
+    this.fastChance = 0,
   });
 }
 
@@ -18,11 +25,13 @@ class _LevelConfig {
 class GameOneScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
+  final bool showIntro;
 
   const GameOneScreen({
     super.key,
     required this.onComplete,
     required this.onLose,
+    this.showIntro = false,
   });
 
   @override
@@ -37,7 +46,12 @@ class _GameOneScreenState extends State<GameOneScreen>
     _LevelConfig(
         targetTaps: 20, seconds: 30, moveDuration: Duration(milliseconds: 1000)),
     _LevelConfig(
-        targetTaps: 30, seconds: 30, moveDuration: Duration(milliseconds: 700)),
+      targetTaps: 30,
+      seconds: 30,
+      moveDuration: Duration(milliseconds: 1100),
+      fastMoveDuration: Duration(milliseconds: 700),
+      fastChance: 0.3,
+    ),
   ];
 
   final _rnd = Random();
@@ -54,12 +68,14 @@ class _GameOneScreenState extends State<GameOneScreen>
   Timer? _clock;
   Timer? _respawnTimer;
   Timer? _loseTimer;
+  late bool _introDone;
 
   _LevelConfig get _level => _levels[_levelIndex];
 
   @override
   void initState() {
     super.initState();
+    _introDone = !widget.showIntro;
     _moveController = AnimationController(vsync: this)
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed && _visible) {
@@ -70,7 +86,7 @@ class _GameOneScreenState extends State<GameOneScreen>
           });
         }
       });
-    _startLevel();
+    if (_introDone) _startLevel();
   }
 
   void _startLevel() {
@@ -102,8 +118,10 @@ class _GameOneScreenState extends State<GameOneScreen>
       _endPos = end;
       _visible = true;
     });
+    final useFast = _level.fastMoveDuration != null &&
+        _rnd.nextDouble() < _level.fastChance;
     _moveController
-      ..duration = _level.moveDuration
+      ..duration = useFast ? _level.fastMoveDuration! : _level.moveDuration
       ..forward(from: 0);
   }
 
@@ -147,7 +165,9 @@ class _GameOneScreenState extends State<GameOneScreen>
       });
       Timer(const Duration(milliseconds: 2200), widget.onComplete);
     } else {
-      setState(() => _message = 'Level ${_levelIndex + 1} 完成！');
+      // Skip the "level complete" banner after level 1 — straight into level 2.
+      final finishedLevel = _levelIndex + 1;
+      setState(() => _message = finishedLevel == 1 ? null : 'Level $finishedLevel 完成！');
       Timer(const Duration(milliseconds: 900), () {
         if (!mounted) return;
         setState(() => _levelIndex++);
@@ -165,84 +185,99 @@ class _GameOneScreenState extends State<GameOneScreen>
     super.dispose();
   }
 
+  void _onIntroStart() {
+    setState(() => _introDone = true);
+    _startLevel();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GameBackground(
-      title: '小鸡毛大作战',
-      level: _levelIndex + 1,
-      levelCount: _levels.length,
-      backgroundImage: 'assets/photos/game1.png',
-      child: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return Stack(
-                children: [
-                  Positioned(
-                    top: 12,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Text(
-                        '$_tapped / ${_level.targetTaps}   •   ⏱ $_secondsLeft s',
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                    ),
-                  ),
-                  if (_message != null)
-                    Positioned(
-                      top: 60,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Text(
-                          _message!,
-                          style: const TextStyle(
-                              color: Colors.amberAccent,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold),
+    return Stack(
+      children: [
+        GameBackground(
+          title: '小鸡毛大作战',
+          level: _levelIndex + 1,
+          levelCount: _levels.length,
+          backgroundImage: 'assets/photos/game1.png',
+          child: Stack(
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    children: [
+                      Positioned(
+                        top: 12,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Text(
+                            '$_tapped / ${_level.targetTaps}   •   ⏱ $_secondsLeft s',
+                            style: const TextStyle(color: Colors.white, fontSize: 18),
+                          ),
                         ),
                       ),
-                    ),
-                  if (_visible)
-                    AnimatedBuilder(
-                      animation: _moveController,
-                      builder: (context, _) {
-                        final t = Curves.easeInOut.transform(_moveController.value);
-                        final pos = Offset.lerp(_startPos, _endPos, t)!;
-                        final popT =
-                            Curves.easeOutBack.transform(t.clamp(0.0, 0.2) / 0.2);
-                        return Positioned(
-                          left: pos.dx * constraints.maxWidth - 28,
-                          top: pos.dy * constraints.maxHeight - 28,
-                          child: GestureDetector(
-                            onTap: _onTapTarget,
-                            child: Transform.scale(
-                              scale: popT,
-                              child: Image.asset(
-                                'assets/photos/jimao.gif',
-                                width: 56,
-                                height: 56,
-                              ),
+                      if (_message != null)
+                        Positioned(
+                          top: 60,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Text(
+                              _message!,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                ],
-              );
-            },
-          ),
-          if (_showComplete)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black87,
-                alignment: Alignment.center,
-                child: Image.asset('assets/photos/complete.gif', width: 240),
+                        ),
+                      if (_visible)
+                        AnimatedBuilder(
+                          animation: _moveController,
+                          builder: (context, _) {
+                            final t = Curves.easeInOut.transform(_moveController.value);
+                            final pos = Offset.lerp(_startPos, _endPos, t)!;
+                            final popT =
+                                Curves.easeOutBack.transform(t.clamp(0.0, 0.2) / 0.2);
+                            return Positioned(
+                              left: pos.dx * constraints.maxWidth - 28,
+                              top: pos.dy * constraints.maxHeight - 28,
+                              child: GestureDetector(
+                                onTap: _onTapTarget,
+                                child: Transform.scale(
+                                  scale: popT,
+                                  child: Image.asset(
+                                    'assets/photos/jimao.gif',
+                                    width: 56,
+                                    height: 56,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  );
+                },
               ),
-            ),
-        ],
-      ),
+              if (_showComplete)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black87,
+                    alignment: Alignment.center,
+                    child: Image.asset('assets/photos/complete.gif', width: 240),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (!_introDone)
+          GameIntroOverlay(
+            title: '小鸡毛大作战',
+            instructionText: '小鸡毛大作战～ 请在指定时间抓到指定数量的小鸡毛哟～',
+            onStart: _onIntroStart,
+          ),
+      ],
     );
   }
 }
