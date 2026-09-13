@@ -94,7 +94,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
 
     return MobileScanner(
       onDetect: _onDetect,
-      errorBuilder: (context, error, child) {
+      errorBuilder: (context, error) {
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),

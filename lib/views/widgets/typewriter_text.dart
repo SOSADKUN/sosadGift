@@ -41,7 +41,7 @@ class _TypewriterTextState extends State<TypewriterText> {
     _timer?.cancel();
     _charCount = 0;
     _timer = Timer.periodic(widget.charDuration, (timer) {
-      if (_charCount >= widget.text.length) {
+      if (_charCount >= widget.text.characters.length) {
         timer.cancel();
         return;
       }
@@ -57,6 +57,21 @@ class _TypewriterTextState extends State<TypewriterText> {
 
   @override
   Widget build(BuildContext context) {
-    return Text(widget.text.substring(0, _charCount), style: widget.style);
+    final visibleText = MediaQuery.disableAnimationsOf(context)
+        ? widget.text
+        : widget.text.characters.take(_charCount).toString();
+    // Reserve the full sentence's layout so the writing does not jump as
+    // a new line appears. Expose the complete sentence to screen readers.
+    return Semantics(
+      label: widget.text,
+      child: ExcludeSemantics(
+        child: Stack(
+          children: [
+            Opacity(opacity: 0, child: Text(widget.text, style: widget.style)),
+            Text(visibleText, style: widget.style),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -33,7 +33,11 @@ class GameBackground extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF2E1A3C), Color(0xFF4B2354), Color(0xFF6B2D5C)],
+                  colors: [
+                    Color(0xFF2E1A3C),
+                    Color(0xFF4B2354),
+                    Color(0xFF6B2D5C),
+                  ],
                 ),
               ),
             ),
@@ -51,8 +55,11 @@ class GameBackground extends StatelessWidget {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new,
-                            color: Colors.white70, size: 18),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
                         onPressed: () => Navigator.of(context).maybePop(),
                       ),
                       Expanded(
@@ -68,15 +75,19 @@ class GameBackground extends StatelessWidget {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          'Lv $level/$levelCount',
-                          style:
-                              const TextStyle(color: Colors.white, fontSize: 12),
+                          levelCount == 1 ? '🔑 × 1' : 'Lv $level/$levelCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],

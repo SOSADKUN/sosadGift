@@ -1,32 +1,15 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_intro_overlay.dart';
 
-class _LevelConfig {
-  final int targetTaps;
-  final int seconds;
-  final Duration moveDuration;
-  // Occasionally spawns a faster feather for variety, instead of every
-  // feather moving at the same speed.
-  final Duration? fastMoveDuration;
-  final double fastChance;
-  const _LevelConfig({
-    required this.targetTaps,
-    required this.seconds,
-    required this.moveDuration,
-    this.fastMoveDuration,
-    this.fastChance = 0,
-  });
-}
-
-/// Tap the feather while it's flying past — reach the target count before time's up.
+/// One friendly round: catch 30 feathers in 30 seconds to earn one key.
 class GameOneScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
   final bool showIntro;
-
   const GameOneScreen({
     super.key,
     required this.onComplete,
@@ -39,242 +22,402 @@ class GameOneScreen extends StatefulWidget {
 }
 
 class _GameOneScreenState extends State<GameOneScreen>
-    with SingleTickerProviderStateMixin {
-  static const _levels = [
-    _LevelConfig(
-        targetTaps: 10, seconds: 30, moveDuration: Duration(milliseconds: 1400)),
-    _LevelConfig(
-        targetTaps: 20, seconds: 30, moveDuration: Duration(milliseconds: 1000)),
-    _LevelConfig(
-      targetTaps: 30,
-      seconds: 30,
-      moveDuration: Duration(milliseconds: 1100),
-      fastMoveDuration: Duration(milliseconds: 700),
-      fastChance: 0.3,
-    ),
-  ];
-
-  final _rnd = Random();
-  late final AnimationController _moveController;
-
-  int _levelIndex = 0;
-  int _tapped = 0;
-  int _secondsLeft = 0;
-  Offset _startPos = const Offset(0.5, 0.5);
-  Offset _endPos = const Offset(0.5, 0.5);
-  bool _visible = true;
-  String? _message;
-  bool _showComplete = false;
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const _goal = 30;
+  final _random = Random();
+  final _elapsed = Stopwatch();
+  late final AnimationController _float;
   Timer? _clock;
-  Timer? _respawnTimer;
-  Timer? _loseTimer;
+  Timer? _respawn;
   late bool _introDone;
-
-  _LevelConfig get _level => _levels[_levelIndex];
+  int _count = 0;
+  int _seconds = 30;
+  int _ready = 3;
+  bool _visible = false;
+  bool _finished = false;
+  bool _claimed = false;
+  bool _paused = false;
+  Offset _position = const Offset(0.5, 0.5);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _float = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat();
     _introDone = !widget.showIntro;
-    _moveController = AnimationController(vsync: this)
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed && _visible) {
-          // Wasn't tapped in time — vanish and try again, no penalty.
-          setState(() => _visible = false);
-          _respawnTimer = Timer(const Duration(milliseconds: 150), () {
-            if (mounted && _secondsLeft > 0) _spawnTarget();
-          });
-        }
-      });
-    if (_introDone) _startLevel();
+    if (_introDone) _start();
   }
 
-  void _startLevel() {
-    _tapped = 0;
-    _secondsLeft = _level.seconds;
-    _message = null;
+  void _onIntroStart() {
+    setState(() => _introDone = true);
+    // The intro overlay already played its own 3-2-1 countdown.
+    _start(withReadyCountdown: false);
+  }
+
+  void _start({bool withReadyCountdown = true}) {
     _clock?.cancel();
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _secondsLeft--);
-      if (_secondsLeft <= 0) _timeUp();
-    });
-    _spawnTarget();
-  }
-
-  void _spawnTarget() {
-    _respawnTimer?.cancel();
-    final angle = _rnd.nextDouble() * 2 * pi;
-    final distance = 0.25 + _rnd.nextDouble() * 0.3;
-    final start = Offset(
-      0.12 + _rnd.nextDouble() * 0.76,
-      0.15 + _rnd.nextDouble() * 0.6,
-    );
-    final end = Offset(
-      (start.dx + cos(angle) * distance).clamp(0.08, 0.92),
-      (start.dy + sin(angle) * distance).clamp(0.12, 0.8),
-    );
+    _respawn?.cancel();
+    _elapsed
+      ..reset()
+      ..stop();
     setState(() {
-      _startPos = start;
-      _endPos = end;
-      _visible = true;
-    });
-    final useFast = _level.fastMoveDuration != null &&
-        _rnd.nextDouble() < _level.fastChance;
-    _moveController
-      ..duration = useFast ? _level.fastMoveDuration! : _level.moveDuration
-      ..forward(from: 0);
-  }
-
-  void _onTapTarget() {
-    if (!_visible) return;
-    _moveController.stop();
-    setState(() {
+      _count = 0;
+      _seconds = 30;
+      _ready = withReadyCountdown ? 3 : 0;
+      _finished = false;
       _visible = false;
-      _tapped++;
+      _claimed = false;
     });
-    if (_tapped >= _level.targetTaps) {
-      _levelClear();
-    } else {
-      _respawnTimer = Timer(const Duration(milliseconds: 120), _spawnTarget);
-    }
-  }
-
-  void _timeUp() {
-    if (_tapped >= _level.targetTaps) {
-      _levelClear();
+    if (!withReadyCountdown) {
+      _elapsed.start();
+      _spawn();
+      _clock = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (_) => _tick(),
+      );
       return;
     }
-    _clock?.cancel();
-    _moveController.stop();
-    _respawnTimer?.cancel();
-    setState(() {
-      _visible = false;
-      _message = '再试一次！';
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_paused) return;
+      setState(() => _ready--);
+      if (_ready == 0) {
+        _clock?.cancel();
+        _elapsed.start();
+        _spawn();
+        _clock = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) => _tick(),
+        );
+      }
     });
-    _loseTimer = Timer(const Duration(milliseconds: 900), widget.onLose);
   }
 
-  void _levelClear() {
-    _clock?.cancel();
-    _moveController.stop();
-    _respawnTimer?.cancel();
-    if (_levelIndex >= _levels.length - 1) {
-      setState(() {
-        _visible = false;
-        _showComplete = true;
-      });
-      Timer(const Duration(milliseconds: 2200), widget.onComplete);
+  void _tick() {
+    if (_paused || _finished) return;
+    final remaining = max(0, 30 - _elapsed.elapsed.inSeconds);
+    if (remaining != _seconds) setState(() => _seconds = remaining);
+    if (_elapsed.elapsedMilliseconds >= 30000) _finish(false);
+  }
+
+  void _spawn() {
+    if (!mounted || _finished) return;
+    setState(() {
+      _position = Offset(_random.nextDouble(), _random.nextDouble());
+      _visible = true;
+    });
+  }
+
+  void _hit() {
+    if (!_visible || _finished || _paused || _ready > 0) return;
+    if (_elapsed.elapsedMilliseconds >= 30000) {
+      _finish(false);
+      return;
+    }
+    HapticFeedback.lightImpact();
+    setState(() {
+      _count++;
+      _visible = false;
+    });
+    if (_count == _goal) {
+      _finish(true);
     } else {
-      // Skip the "level complete" banner after level 1 — straight into level 2.
-      final finishedLevel = _levelIndex + 1;
-      setState(() => _message = finishedLevel == 1 ? null : 'Level $finishedLevel 完成！');
-      Timer(const Duration(milliseconds: 900), () {
-        if (!mounted) return;
-        setState(() => _levelIndex++);
-        _startLevel();
-      });
+      _respawn = Timer(const Duration(milliseconds: 100), _spawn);
+    }
+  }
+
+  void _finish(bool won) {
+    if (_finished) return;
+    _clock?.cancel();
+    _respawn?.cancel();
+    _elapsed.stop();
+    setState(() {
+      _finished = true;
+      _visible = false;
+    });
+    if (won) HapticFeedback.mediumImpact();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _paused = state != AppLifecycleState.resumed;
+    if (_paused) {
+      _elapsed.stop();
+    } else if (_introDone && _ready == 0 && !_finished) {
+      _elapsed.start();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clock?.cancel();
-    _respawnTimer?.cancel();
-    _loseTimer?.cancel();
-    _moveController.dispose();
+    _respawn?.cancel();
+    _elapsed.stop();
+    _float.dispose();
     super.dispose();
-  }
-
-  void _onIntroStart() {
-    setState(() => _introDone = true);
-    _startLevel();
   }
 
   @override
   Widget build(BuildContext context) {
+    const pink = Color(0xFFFFBBD0);
     return Stack(
       children: [
         GameBackground(
           title: '小鸡毛大作战',
-          level: _levelIndex + 1,
-          levelCount: _levels.length,
+          level: 1,
+          levelCount: 1,
           backgroundImage: 'assets/photos/game1.png',
-          child: Stack(
+          child: Column(
             children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  return Stack(
-                    children: [
-                      Positioned(
-                        top: 12,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Text(
-                            '$_tapped / ${_level.targetTaps}   •   ⏱ $_secondsLeft s',
-                            style: const TextStyle(color: Colors.white, fontSize: 18),
+              Container(
+                margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xE62D223C),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: pink.withValues(alpha: 0.4)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '抓住小鸡毛',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        Text(
+                          '⏱ ${_seconds}s',
+                          style: TextStyle(
+                            color: _seconds <= 5 ? pink : Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                      if (_message != null)
-                        Positioned(
-                          top: 60,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: Text(
-                              _message!,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: Text(
+                            '$_count',
+                            key: ValueKey(_count),
+                            style: const TextStyle(
+                              fontSize: 42,
+                              fontWeight: FontWeight.w800,
+                              color: pink,
                             ),
                           ),
                         ),
-                      if (_visible)
-                        AnimatedBuilder(
-                          animation: _moveController,
-                          builder: (context, _) {
-                            final t = Curves.easeInOut.transform(_moveController.value);
-                            final pos = Offset.lerp(_startPos, _endPos, t)!;
-                            final popT =
-                                Curves.easeOutBack.transform(t.clamp(0.0, 0.2) / 0.2);
-                            return Positioned(
-                              left: pos.dx * constraints.maxWidth - 28,
-                              top: pos.dy * constraints.maxHeight - 28,
-                              child: GestureDetector(
-                                onTap: _onTapTarget,
-                                child: Transform.scale(
-                                  scale: popT,
-                                  child: Image.asset(
-                                    'assets/photos/jimao.gif',
-                                    width: 56,
-                                    height: 56,
-                                  ),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            ' / 30',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _count == 0
+                              ? '30 秒 · 一把钥匙'
+                              : '真棒！还差 ${30 - _count} 个',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: _count / _goal,
+                        minHeight: 8,
+                        color: pink,
+                        backgroundColor: Colors.white12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final targetSize = min(
+                      112.0,
+                      min(box.maxWidth, box.maxHeight),
+                    );
+                    return Stack(
+                      children: [
+                        if (!_finished && _ready == 0)
+                          const Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 18),
+                              child: Text(
+                                '点一下，抓住它 ♡',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                    ],
-                  );
-                },
-              ),
-              if (_showComplete)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black87,
-                    alignment: Alignment.center,
-                    child: Image.asset('assets/photos/complete.gif', width: 240),
-                  ),
+                            ),
+                          ),
+                        if (_visible)
+                          AnimatedBuilder(
+                            animation: _float,
+                            builder: (context, _) {
+                              final reducedMotion =
+                                  MediaQuery.disableAnimationsOf(context);
+                              final phase = _float.value * pi * 2;
+                              // A continuous flying loop, safely inside the play area.
+                              final x =
+                                  0.20 +
+                                  _position.dx * 0.60 +
+                                  (reducedMotion ? 0.0 : sin(phase) * 0.18);
+                              final y =
+                                  0.16 +
+                                  _position.dy * 0.68 +
+                                  (reducedMotion ? 0.0 : cos(phase) * 0.14);
+                              return Positioned(
+                                left: x * max(0, box.maxWidth - targetSize),
+                                top:
+                                    y * max(0, box.maxHeight - targetSize - 44),
+                                child: Semantics(
+                                  button: true,
+                                  label: '抓住小鸡毛',
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: _hit,
+                                    child: Container(
+                                      width: targetSize,
+                                      height: targetSize,
+                                      padding: const EdgeInsets.all(12),
+                                      child: Image.asset(
+                                        'assets/photos/jimao.gif',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        if (_ready > 0 && !_finished)
+                          Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  '准备好了吗？',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                  ),
+                                ),
+                                Text(
+                                  '$_ready',
+                                  style: const TextStyle(
+                                    color: pink,
+                                    fontSize: 88,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_finished)
+                          Center(
+                            child: Container(
+                              margin: const EdgeInsets.all(20),
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: const Color(0xF22D223C),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _count == _goal
+                                        ? Icons.vpn_key_rounded
+                                        : Icons.favorite_rounded,
+                                    size: 52,
+                                    color: pink,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    _count == _goal
+                                        ? '钥匙到手啦！'
+                                        : '已经抓到 $_count 个！',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _count == _goal
+                                        ? '30 / 30 · 太厉害了 ♡'
+                                        : '差一点点，再来一次吧 ♡',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  FilledButton(
+                                    onPressed: () {
+                                      if (_count == _goal) {
+                                        if (_claimed) return;
+                                        _claimed = true;
+                                        widget.onComplete();
+                                      } else {
+                                        _start();
+                                      }
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: pink,
+                                      foregroundColor: const Color(0xFF392239),
+                                    ),
+                                    child: Text(
+                                      _count == _goal ? '领取钥匙，回到小屋' : '再试一次',
+                                    ),
+                                  ),
+                                  if (_count != _goal)
+                                    TextButton(
+                                      onPressed: widget.onLose,
+                                      child: const Text(
+                                        '先回小屋',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
+              ),
             ],
           ),
         ),
         if (!_introDone)
           GameIntroOverlay(
             title: '小鸡毛大作战',
-            instructionText: '小鸡毛大作战～ 请在指定时间抓到指定数量的小鸡毛哟～',
+            instructionText:
+                '30 秒内，点到 30 个小鸡毛！\n小鸡毛会飞来飞去，点中会轻轻震动～\n完成就能拿到一把钥匙 ♡',
             onStart: _onIntroStart,
           ),
       ],

@@ -1,58 +1,27 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_intro_overlay.dart';
 
-enum _Element { metal, wood, water, fire, earth }
-
-// Wu Xing overcoming cycle: 火克金, 金克木, 木克土, 土克水, 水克火.
-// Value = the element that beats the key element.
-const Map<_Element, _Element> _counterOf = {
-  _Element.metal: _Element.fire,
-  _Element.wood: _Element.metal,
-  _Element.earth: _Element.wood,
-  _Element.water: _Element.earth,
-  _Element.fire: _Element.water,
-};
-
-const Map<_Element, String> _char = {
-  _Element.metal: '金',
-  _Element.wood: '木',
-  _Element.water: '水',
-  _Element.fire: '火',
-  _Element.earth: '土',
-};
-
-const Map<_Element, String> _emoji = {
-  _Element.metal: '⚙️',
-  _Element.wood: '🌳',
-  _Element.water: '💧',
-  _Element.fire: '🔥',
-  _Element.earth: '🪨',
-};
-
-const Map<_Element, List<String>> _aliases = {
-  _Element.metal: ['金', 'jin', 'metal', 'gold'],
-  _Element.wood: ['木', 'mu', 'wood'],
-  _Element.water: ['水', 'shui', 'water'],
-  _Element.fire: ['火', 'huo', 'fire'],
-  _Element.earth: ['土', 'tu', 'earth', 'soil'],
-};
-
-class _LevelConfig {
-  final int bossHp;
-  final int hitDamage;
-  final int wrongPenalty;
-  const _LevelConfig({
-    required this.bossHp,
-    required this.hitDamage,
-    required this.wrongPenalty,
-  });
+class _Pad {
+  final Color color;
+  final String asset;
+  const _Pad(this.color, this.asset);
 }
 
-/// Boss battle: the boss shows an element, type the element that overcomes it
-/// (五行相克) and attack. Get it wrong and the boss hits back.
+const _pads = [
+  _Pad(Color(0xFFFF6FA5), 'assets/photos/game2_1.gif'),
+  _Pad(Color(0xFFFFC857), 'assets/photos/game2_2.gif'),
+  _Pad(Color(0xFF8E7CFF), 'assets/photos/game2_3.gif'),
+  _Pad(Color(0xFF5FD3A6), 'assets/photos/game2_4.gif'),
+  _Pad(Color(0xFF5AC8FA), 'assets/photos/game2_5.gif'),
+  _Pad(Color(0xFFFF8A5B), 'assets/photos/game2_6.gif'),
+];
+
+/// Simon-style memory game: watch the pattern light up, then repeat it by
+/// tapping the pads in the same order. Each round adds one more step.
 class GameTwoScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
@@ -70,24 +39,20 @@ class GameTwoScreen extends StatefulWidget {
 }
 
 class _GameTwoScreenState extends State<GameTwoScreen> {
-  static const _playerMaxHp = 100;
-  static const _levels = [
-    _LevelConfig(bossHp: 30, hitDamage: 10, wrongPenalty: 10),
-    _LevelConfig(bossHp: 50, hitDamage: 10, wrongPenalty: 15),
-    _LevelConfig(bossHp: 70, hitDamage: 10, wrongPenalty: 20),
-  ];
+  static const _startLength = 3;
+  static const _winLength = 7;
+  static const _showDuration = Duration(milliseconds: 500);
+  static const _gapDuration = Duration(milliseconds: 250);
 
   final _rnd = Random();
-  final _controller = TextEditingController();
-  int _levelIndex = 0;
-  int _bossHp = 0;
-  int _playerHp = _playerMaxHp;
-  _Element _bossElement = _Element.fire;
+  final List<int> _sequence = [];
+  int _inputIndex = 0;
+  int _activePad = -1;
+  bool _showingSequence = true;
   String? _message;
   bool _finished = false;
   late bool _introDone;
-
-  _LevelConfig get _level => _levels[_levelIndex];
+  Timer? _playTimer;
 
   @override
   void initState() {
@@ -102,78 +67,73 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
   }
 
   void _startLevel() {
-    _bossHp = _level.bossHp;
-    _playerHp = _playerMaxHp;
-    _bossElement = _Element.values[_rnd.nextInt(_Element.values.length)];
-    _message = null;
+    _playTimer?.cancel();
+    _sequence
+      ..clear()
+      ..addAll(List.generate(_startLength, (_) => _rnd.nextInt(_pads.length)));
+    _inputIndex = 0;
     _finished = false;
-    _controller.clear();
+    _message = null;
+    _playSequence();
   }
 
-  _Element? _matchElement(String input) {
-    final normalized = input.trim().toLowerCase();
-    if (normalized.isEmpty) return null;
-    for (final e in _Element.values) {
-      for (final alias in _aliases[e]!) {
-        final a = alias.toLowerCase();
-        if (normalized == a || normalized.contains(a)) return e;
-      }
-    }
-    return null;
-  }
-
-  _Element _nextBossElement(_Element current) {
-    _Element next;
-    do {
-      next = _Element.values[_rnd.nextInt(_Element.values.length)];
-    } while (next == current);
-    return next;
-  }
-
-  void _attack() {
-    if (_finished) return;
-    final input = _controller.text;
-    _controller.clear();
-    if (input.trim().isEmpty) return;
-
-    final matched = _matchElement(input);
-    final correct = matched != null && matched == _counterOf[_bossElement];
-
+  void _playSequence() {
     setState(() {
-      if (correct) {
-        _bossHp -= _level.hitDamage;
-        _message = '命中！${_char[_bossElement]}${_emoji[_bossElement]} 被克制啦！';
-      } else if (matched == null) {
-        _playerHp -= _level.wrongPenalty;
-        _message = '没有识别到这个元素，被反击了！';
-      } else {
-        _playerHp -= _level.wrongPenalty;
-        _message = '元素不对，被反击了！';
-      }
+      _showingSequence = true;
+      _inputIndex = 0;
+      _message = null;
     });
-
-    if (_bossHp <= 0) {
-      _levelClear();
-      return;
+    int step = 0;
+    void showNext() {
+      if (!mounted) return;
+      if (step >= _sequence.length) {
+        setState(() {
+          _activePad = -1;
+          _showingSequence = false;
+        });
+        return;
+      }
+      setState(() => _activePad = _sequence[step]);
+      _playTimer = Timer(_showDuration, () {
+        if (!mounted) return;
+        setState(() => _activePad = -1);
+        step++;
+        _playTimer = Timer(_gapDuration, showNext);
+      });
     }
-    if (_playerHp <= 0) {
+
+    showNext();
+  }
+
+  void _tapPad(int index) {
+    if (_showingSequence || _finished) return;
+    HapticFeedback.selectionClick();
+    if (_sequence[_inputIndex] != index) {
       _fail();
       return;
     }
-    if (correct) {
-      Timer(const Duration(milliseconds: 500), () {
-        if (!mounted || _finished) return;
-        setState(() {
-          _bossElement = _nextBossElement(_bossElement);
-          _message = null;
-        });
-      });
+    setState(() => _activePad = index);
+    Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() => _activePad = -1);
+    });
+    _inputIndex++;
+    if (_inputIndex == _sequence.length) {
+      if (_sequence.length >= _winLength) {
+        _levelClear();
+      } else {
+        setState(
+          () => _sequence.add(_rnd.nextInt(_pads.length)),
+        );
+        Timer(const Duration(milliseconds: 500), _playSequence);
+      }
     }
   }
 
   void _fail() {
     _finished = true;
-    setState(() => _message = '再试一次！');
+    HapticFeedback.heavyImpact();
+    setState(() => _message = '记错顺序啦，再试一次！');
     Timer(const Duration(milliseconds: 900), () {
       if (mounted) widget.onLose();
     });
@@ -181,36 +141,17 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
 
   void _levelClear() {
     _finished = true;
-    if (_levelIndex >= _levels.length - 1) {
-      setState(() => _message = '通关啦！🎉');
-      Timer(const Duration(milliseconds: 700), widget.onComplete);
-    } else {
-      setState(() => _message = 'Level ${_levelIndex + 1} 完成！');
-      Timer(const Duration(milliseconds: 900), () {
-        if (!mounted) return;
-        setState(() => _levelIndex++);
-        _startLevel();
-      });
-    }
+    HapticFeedback.mediumImpact();
+    setState(() => _message = '获得一把钥匙！🔑');
+    Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) widget.onComplete();
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _playTimer?.cancel();
     super.dispose();
-  }
-
-  Widget _hpBar(int hp, int maxHp, Color color) {
-    final ratio = (hp / maxHp).clamp(0.0, 1.0);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: LinearProgressIndicator(
-        value: ratio,
-        minHeight: 14,
-        backgroundColor: Colors.white24,
-        valueColor: AlwaysStoppedAnimation(color),
-      ),
-    );
   }
 
   @override
@@ -218,99 +159,101 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
     return Stack(
       children: [
         GameBackground(
-          title: '元素大作战',
-          level: _levelIndex + 1,
-          levelCount: _levels.length,
+          title: '心动记忆',
+          level: 1,
+          levelCount: 1,
           backgroundImage: 'assets/photos/game2.png',
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               children: [
-                const SizedBox(height: 8),
-                Text(_emoji[_bossElement]!, style: const TextStyle(fontSize: 56)),
+                const SizedBox(height: 10),
                 Text(
-                  'Boss: ${_char[_bossElement]} ${_emoji[_bossElement]}',
+                  _showingSequence ? '仔细看好顺序～' : '轮到你啦，跟着点一遍',
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 6),
-                _hpBar(_bossHp, _level.bossHp, Colors.redAccent),
-                Text('$_bossHp / ${_level.bossHp}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                const SizedBox(height: 10),
-                const Text(
-                  '提示：金克木 · 木克土 · 土克水 · 水克火 · 火克金',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                Text(
+                  '第 ${_sequence.length - _startLength + 1} 关 · 共 '
+                  '${_winLength - _startLength + 1} 关',
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
                 ),
                 if (_message != null) ...[
                   const SizedBox(height: 10),
                   Text(
                     _message!,
-                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
                 const Spacer(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        enabled: !_finished,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _attack(),
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
-                        decoration: InputDecoration(
-                          hintText: '写下你的技能，如：火',
-                          hintStyle: const TextStyle(color: Colors.white38),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.12),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  childAspectRatio: 1.45,
+                  children: List.generate(_pads.length, (i) {
+                    final pad = _pads[i];
+                    final active = _activePad == i;
+                    return GestureDetector(
+                      onTap: () => _tapPad(i),
+                      child: AnimatedScale(
+                        scale: active ? 1.08 : 1.0,
+                        duration: const Duration(milliseconds: 120),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2D223C),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: active
+                                  ? pad.color
+                                  : Colors.white.withValues(alpha: 0.3),
+                              width: active ? 3 : 1.5,
+                            ),
+                            boxShadow: active
+                                ? [
+                                    BoxShadow(
+                                      color: pad.color.withValues(alpha: 0.7),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                    ),
+                                  ]
+                                : const [],
+                          ),
+                          child: AnimatedOpacity(
+                            opacity: active ? 1.0 : 0.55,
+                            duration: const Duration(milliseconds: 120),
+                            child: Image.asset(
+                              pad.asset,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _finished ? null : _attack,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amberAccent,
-                        foregroundColor: Colors.brown[800],
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('攻击',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ],
+                    );
+                  }),
                 ),
-                const SizedBox(height: 12),
-                _hpBar(_playerHp, _playerMaxHp, Colors.greenAccent),
-                Text('我方 HP: $_playerHp / $_playerMaxHp',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                const SizedBox(height: 12),
+                const Spacer(),
               ],
             ),
           ),
         ),
         if (!_introDone)
           GameIntroOverlay(
-            title: '元素大作战',
+            title: '心动记忆',
             instructionText:
-                '元素大作战～ Boss 会显示一个元素，请写出能克制它的元素来攻击\n（金克木 木克土 土克水 水克火 火克金）\n写错会被反击哦～',
+                '看好卡片亮起的顺序\n轮到你时，按同样的顺序点一遍\n每过一关顺序会变长一点，坚持到第 5 关就赢啦～',
             onStart: _onIntroStart,
           ),
       ],

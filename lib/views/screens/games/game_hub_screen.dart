@@ -21,16 +21,33 @@ class _GameHubScreenState extends State<GameHubScreen> {
   // Add/remove games here — one door per entry, in door order
   // [top-left, top-right, bottom-left, bottom-right].
   late final List<
-      Widget Function(
-          VoidCallback onComplete, VoidCallback onLose, bool showIntro)> _games = [
+    Widget Function(
+      VoidCallback onComplete,
+      VoidCallback onLose,
+      bool showIntro,
+    )
+  >
+  _games = [
     (onComplete, onLose, showIntro) => GameOneScreen(
-        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
+      onComplete: onComplete,
+      onLose: onLose,
+      showIntro: showIntro,
+    ),
     (onComplete, onLose, showIntro) => GameTwoScreen(
-        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
+      onComplete: onComplete,
+      onLose: onLose,
+      showIntro: showIntro,
+    ),
     (onComplete, onLose, showIntro) => GameThreeScreen(
-        onComplete: onComplete, onLose: onLose, showIntro: showIntro),
-    (onComplete, onLose, showIntro) =>
-        GameFourScreen(onComplete: onComplete, showIntro: showIntro),
+      onComplete: onComplete,
+      onLose: onLose,
+      showIntro: showIntro,
+    ),
+    (onComplete, onLose, showIntro) => GameFourScreen(
+      onComplete: onComplete,
+      onLose: onLose,
+      showIntro: showIntro,
+    ),
   ];
 
   final Set<int> _solved = {};
@@ -38,6 +55,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
   final Set<int> _instructionsShown = {};
   _Mood _mood = _Mood.none;
   Timer? _moodTimer;
+  Timer? _advanceTimer;
 
   void _openGame(int index) async {
     if (_solved.contains(index)) return;
@@ -57,6 +75,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
   }
 
   void _completeGame(int index) {
+    if (!mounted || _solved.contains(index)) return;
     Navigator.of(context).pop();
     setState(() {
       _solved.add(index);
@@ -65,7 +84,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
     _resetMoodAfter(const Duration(seconds: 2));
 
     if (_solved.length == _games.length) {
-      Future.delayed(const Duration(milliseconds: 1200), widget.onAllGamesComplete);
+      _advanceTimer = Timer(const Duration(milliseconds: 1600), () {
+        if (mounted) widget.onAllGamesComplete();
+      });
     }
   }
 
@@ -85,6 +106,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
   @override
   void dispose() {
     _moodTimer?.cancel();
+    _advanceTimer?.cancel();
     super.dispose();
   }
 
@@ -108,8 +130,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
                 alignment: Alignment.topCenter,
                 child: Container(
                   margin: const EdgeInsets.only(top: 10),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(20),
@@ -117,11 +141,14 @@ class _GameHubScreenState extends State<GameHubScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.vpn_key_rounded,
-                          color: Colors.amberAccent, size: 16),
+                      const Icon(
+                        Icons.vpn_key_rounded,
+                        color: Colors.amberAccent,
+                        size: 16,
+                      ),
                       const SizedBox(width: 6),
                       Text(
-                        '${_solved.length} / ${_games.length}',
+                        '钥匙 ${_solved.length} / ${_games.length}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -145,7 +172,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               _HubCharacter(
-                                  winCount: _solved.length, mood: _mood),
+                                winCount: _solved.length,
+                                mood: _mood,
+                              ),
                               const _SpeechBubble(text: '点击门口进入游戏哦～'),
                             ],
                           ),
@@ -273,8 +302,10 @@ class _HubCharacter extends StatelessWidget {
                         color: Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: Text(_reactionEmoji!,
-                          style: const TextStyle(fontSize: 26)),
+                      child: Text(
+                        _reactionEmoji!,
+                        style: const TextStyle(fontSize: 26),
+                      ),
                     ),
             ),
           ),
@@ -310,7 +341,10 @@ class _SpeechBubble extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               boxShadow: const [
                 BoxShadow(
-                    color: Colors.black26, blurRadius: 8, offset: Offset(0, 3)),
+                  color: Colors.black26,
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
               ],
             ),
             child: Text(
@@ -348,16 +382,19 @@ class _GameDoorHotspot extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.amber[400],
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: const [
                     BoxShadow(
-                        color: Colors.black45,
-                        blurRadius: 6,
-                        offset: Offset(0, 2)),
+                      color: Colors.black45,
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
                   ],
                 ),
                 child: const Row(

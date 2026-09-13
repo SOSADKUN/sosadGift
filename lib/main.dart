@@ -19,11 +19,17 @@ class MyApp extends StatelessWidget {
       title: 'Happy Birthday 🎂',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pinkAccent,
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.pinkAccent),
         useMaterial3: true,
         scaffoldBackgroundColor: Colors.black,
+      ),
+      // Also style routes and overlays that sit outside a Scaffold/Material.
+      builder: (context, child) => DefaultTextStyle(
+        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+          inherit: false,
+          decoration: TextDecoration.none,
+        ),
+        child: child ?? const SizedBox.shrink(),
       ),
       home: const AppFlow(),
     );

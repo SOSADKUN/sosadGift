@@ -75,8 +75,55 @@ class _AppFlowState extends State<AppFlow> {
 
   @override
   Widget build(BuildContext context) {
+    final enteringHub = kFlowOrder[_index] == FlowStep.gameHub;
+    final enteringDiary = kFlowOrder[_index] == FlowStep.storyRecap;
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
+      duration: Duration(
+        milliseconds: reducedMotion
+            ? 200
+            : enteringDiary
+            ? 1800
+            : enteringHub
+            ? 1400
+            : 350,
+      ),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      transitionBuilder: (child, animation) {
+        final isDiary =
+            child.key == ValueKey(kFlowOrder.indexOf(FlowStep.storyRecap));
+        if (enteringDiary && isDiary) {
+          // The new diary covers the outgoing video immediately. Its white
+          // veil holds briefly, then dissolves to reveal the page underneath.
+          final reveal = animation.drive(
+            CurveTween(curve: const Interval(0.15, 1, curve: Curves.easeOut)),
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              child,
+              IgnorePointer(
+                child: FadeTransition(
+                  opacity: ReverseAnimation(reveal),
+                  child: const ColoredBox(color: Colors.white),
+                ),
+              ),
+            ],
+          );
+        }
+        final fade = FadeTransition(opacity: animation, child: child);
+        if (!enteringHub || reducedMotion) return fade;
+        final isHub =
+            child.key == ValueKey(kFlowOrder.indexOf(FlowStep.gameHub));
+        return ScaleTransition(
+          scale: Tween<double>(
+            begin: isHub ? 1.08 : 1.15,
+            end: 1,
+          ).animate(animation),
+          child: fade,
+        );
+      },
       child: Container(
         key: ValueKey(_index),
         color: Colors.black,

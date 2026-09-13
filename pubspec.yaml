@@ -39,7 +39,7 @@ dependencies:
   record: ^7.1.1
   supabase_flutter: ^2.17.2
   qr_flutter: ^4.1.0
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.4.1
   google_fonts: ^6.2.1
   audioplayers: ^6.1.0
   
@@ -88,6 +88,21 @@ flutter:
     - assets/photos/game4.png
     - assets/photos/jimao.gif
     - assets/photos/complete.gif
+    - assets/photos/game2_1.gif
+    - assets/photos/game2_2.gif
+    - assets/photos/game2_3.gif
+    - assets/photos/game2_4.gif
+    - assets/photos/game2_5.gif
+    - assets/photos/game2_6.gif
+    - assets/photos/game3_move.gif
+    - assets/photos/game3_1.gif
+    - assets/photos/game3_success.gif
+    - assets/photos/game4_1.gif
+    - assets/photos/game4_2.gif
+    - assets/photos/game4_3.gif
+    - assets/photos/game4_boom.gif
+    - assets/photos/game4_booooom.gif
+    - assets/photos/fail.gif
 
   # To add assets to your application, add an assets section, like this:
   # assets:

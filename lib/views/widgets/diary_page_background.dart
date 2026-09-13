@@ -1,174 +1,127 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// A cream, grid-lined notebook page with cute corner doodles —
-/// the visual base for diary-style screens. Drop content on top via [child].
+/// A cream scrapbook sheet on blush gingham, held with translucent washi tape.
 class DiaryPageBackground extends StatelessWidget {
   final Widget? child;
-
   const DiaryPageBackground({super.key, this.child});
 
-  static const _paper = Color(0xFFFBF6EA);
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: _paper,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(painter: _GridPainter()),
-
-          // gold corner protector, top-right
-          const Positioned(top: 0, right: 0, child: _GoldCorner()),
-
-          // corner doodles
-          const Positioned(top: 18, left: 14, child: _TopLeftDoodle()),
-          const Positioned(top: 60, right: 20, child: _TopRightDoodle()),
-          const Positioned(bottom: 18, left: 14, child: _BottomLeftDoodle()),
-          const Positioned(bottom: 18, right: 14, child: _BottomRightDoodle()),
-
-          // scattered stars
-          const Positioned(top: 130, left: 24, child: _Star(size: 16)),
-          const Positioned(top: 210, right: 30, child: _Star(size: 18)),
-          const Positioned(bottom: 140, left: 30, child: _Star(size: 16)),
-          const Positioned(bottom: 150, right: 90, child: _Star(size: 14)),
-
-          ?child,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Material(
+    color: const Color(0xFFF4DFDC),
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        const CustomPaint(painter: _ScrapbookPainter()),
+        ?child,
+      ],
+    ),
+  );
 }
 
-class _GridPainter extends CustomPainter {
-  static const _spacing = 28.0;
+class _ScrapbookPainter extends CustomPainter {
+  const _ScrapbookPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFDCE7F0)
-      ..strokeWidth = 1;
-
-    for (double x = 0; x <= size.width; x += _spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    final gingham = Paint()
+      ..color = const Color(0xFFD39DA4).withValues(alpha: 0.14);
+    for (double x = 0; x < size.width; x += 28) {
+      canvas.drawRect(Rect.fromLTWH(x, 0, 14, size.height), gingham);
     }
-    for (double y = 0; y <= size.height; y += _spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    for (double y = 0; y < size.height; y += 28) {
+      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 14), gingham);
     }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _GoldCorner extends StatelessWidget {
-  const _GoldCorner();
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipPath(
-      clipper: _TriangleClipper(),
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-            colors: [Color(0xFFEAD6A0), Color(0xFFC9A15E)],
-          ),
+    final page = Rect.fromLTRB(22, 24, size.width - 18, size.height - 22);
+    final paper = RRect.fromRectAndRadius(page, const Radius.circular(5));
+    canvas.drawShadow(
+      Path()..addRRect(paper),
+      const Color(0xFF956D67),
+      7,
+      false,
+    );
+    canvas.drawRRect(
+      paper.shift(const Offset(3, 4)),
+      Paint()..color = const Color(0xFFE9D9C6),
+    );
+    canvas.drawRRect(
+      paper,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFCF3), Color(0xFFF9F0DE)],
+        ).createShader(page),
+    );
+    canvas.save();
+    canvas.clipRRect(paper);
+    // Faint dotted stationery leaves plenty of quiet space for handwriting.
+    final dot = Paint()
+      ..color = const Color(0xFFBDA69D).withValues(alpha: 0.23);
+    for (double x = 38; x < page.right; x += 20) {
+      for (double y = 42; y < page.bottom; y += 20) {
+        canvas.drawCircle(Offset(x, y), 0.65, dot);
+      }
+    }
+    final random = math.Random(917);
+    final grain = Paint()
+      ..color = const Color(0xFF9C816C).withValues(alpha: 0.045);
+    for (var i = 0; i < 1500; i++) {
+      canvas.drawCircle(
+        Offset(
+          random.nextDouble() * size.width,
+          random.nextDouble() * size.height,
         ),
-      ),
+        0.6,
+        grain,
+      );
+    }
+    canvas.restore();
+    _tape(canvas, Offset(55, 29), -0.28, const Color(0xFFE8B8BD));
+    _tape(
+      canvas,
+      Offset(size.width - 48, size.height - 29),
+      -0.30,
+      const Color(0xFFC5CEB4),
     );
-  }
-}
-
-class _TriangleClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    return Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..close();
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
-
-class _Star extends StatelessWidget {
-  final double size;
-  const _Star({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text('⭐', style: TextStyle(fontSize: size));
-  }
-}
-
-class _TopLeftDoodle extends StatelessWidget {
-  const _TopLeftDoodle();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Text('🌸', style: TextStyle(fontSize: 22)),
-        Text('🌷', style: TextStyle(fontSize: 20)),
-        Text('🌼', style: TextStyle(fontSize: 18)),
-      ],
+    // A pressed flower at the edge, away from the writing and photographs.
+    final stem = Paint()
+      ..color = const Color(0xFF9DAE8C)
+      ..strokeWidth = 1.4;
+    final base = Offset(size.width - 29, 155);
+    canvas.drawLine(base, base.translate(-5, -42), stem);
+    canvas.drawOval(
+      Rect.fromCenter(center: base.translate(-6, -12), width: 10, height: 5),
+      Paint()..color = const Color(0xFFBCC8A6),
     );
+    final center = base.translate(-5, -45);
+    for (var i = 0; i < 5; i++) {
+      final angle = i * math.pi * 2 / 5;
+      canvas.drawCircle(
+        center + Offset(math.cos(angle), math.sin(angle)) * 5,
+        4,
+        Paint()..color = const Color(0xFFE8B8BD),
+      );
+    }
+    canvas.drawCircle(center, 2.5, Paint()..color = const Color(0xFFEACB8F));
   }
-}
 
-class _TopRightDoodle extends StatelessWidget {
-  const _TopRightDoodle();
+  void _tape(Canvas canvas, Offset center, double angle, Color color) {
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(angle);
+    const rect = Rect.fromLTWH(-30, -9, 60, 18);
+    canvas.drawRect(rect, Paint()..color = color.withValues(alpha: 0.75));
+    canvas.clipRect(rect);
+    final stripe = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 2;
+    for (double x = -45; x < 45; x += 8) {
+      canvas.drawLine(Offset(x, -9), Offset(x + 18, 9), stripe);
+    }
+    canvas.restore();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text('🐻', style: TextStyle(fontSize: 26)),
-        Text('🌸', style: TextStyle(fontSize: 16)),
-      ],
-    );
-  }
-}
-
-class _BottomLeftDoodle extends StatelessWidget {
-  const _BottomLeftDoodle();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('🐻', style: TextStyle(fontSize: 26)),
-        Row(
-          children: [
-            Text('🌷', style: TextStyle(fontSize: 16)),
-            Text('🌸', style: TextStyle(fontSize: 16)),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _BottomRightDoodle extends StatelessWidget {
-  const _BottomRightDoodle();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text('🐷', style: TextStyle(fontSize: 18)),
-        Text('🐻', style: TextStyle(fontSize: 28)),
-        Text('🌸', style: TextStyle(fontSize: 16)),
-      ],
-    );
-  }
+  bool shouldRepaint(_ScrapbookPainter oldDelegate) => false;
 }

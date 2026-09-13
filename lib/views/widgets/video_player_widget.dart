@@ -8,7 +8,11 @@ class VideoPlayerWidget extends StatefulWidget {
   final bool loop;
   final bool showTapToSkip;
   final bool landscape;
-  
+
+  /// Show the entire frame within the phone's safe area from this timestamp.
+  final Duration? containFrom;
+  final Color containedBackgroundColor;
+
   const VideoPlayerWidget({
     super.key,
     required this.assetPath,
@@ -16,6 +20,8 @@ class VideoPlayerWidget extends StatefulWidget {
     this.loop = false,
     this.showTapToSkip = true,
     this.landscape = false,
+    this.containFrom,
+    this.containedBackgroundColor = Colors.black,
   });
 
   @override
@@ -26,6 +32,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   late final VideoPlayerController _controller;
   bool _ready = false;
   bool _fired = false;
+  bool _contain = false;
 
   @override
   void initState() {
@@ -37,13 +44,12 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         DeviceOrientation.landscapeRight,
       ]);
 
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.immersiveSticky,
-      );
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
 
     _controller = VideoPlayerController.asset(widget.assetPath)
       ..initialize().then((_) {
+        if (!mounted) return;
         setState(() => _ready = true);
         _controller.setLooping(widget.loop);
         _controller.play();
@@ -53,6 +59,13 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   }
 
   void _checkFinished() {
+    if (!mounted) return;
+    final threshold = widget.containFrom;
+    final shouldContain =
+        threshold != null && _controller.value.position >= threshold;
+    if (_contain != shouldContain) {
+      setState(() => _contain = shouldContain);
+    }
     if (_fired || widget.loop) return;
     final value = _controller.value;
     if (value.isInitialized &&
@@ -69,13 +82,9 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _controller.dispose();
 
     if (widget.landscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-      ]);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge,
-      );
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
 
     super.dispose();
@@ -93,23 +102,31 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
             }
           : null,
       child: Container(
-        color: Colors.black,
+        color: _contain ? widget.containedBackgroundColor : Colors.black,
         child: Center(
-          child: 
-            Stack(
-              children: [
-                // 黑色背景
-                Positioned.fill(
-                  child: Container(color: Colors.black),
+          child: Stack(
+            children: [
+              // 黑色背景
+              Positioned.fill(
+                child: Container(
+                  color: _contain
+                      ? widget.containedBackgroundColor
+                      : Colors.black,
                 ),
+              ),
 
-                if (_ready)
-                  Positioned.fill(
-                    child: AnimatedOpacity(
-                      opacity: 1,
-                      duration: const Duration(milliseconds: 400),
+              if (_ready)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: 1,
+                    duration: const Duration(milliseconds: 400),
+                    child: Padding(
+                      padding: _contain
+                          ? MediaQuery.paddingOf(context)
+                          : EdgeInsets.zero,
                       child: FittedBox(
-                        fit: BoxFit.cover,
+                        fit: _contain ? BoxFit.contain : BoxFit.cover,
+                        alignment: Alignment.center,
                         child: SizedBox(
                           width: _controller.value.size.width,
                           height: _controller.value.size.height,
@@ -118,9 +135,10 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                       ),
                     ),
                   ),
-              ],
-            )
+                ),
+            ],
           ),
+        ),
       ),
     );
   }

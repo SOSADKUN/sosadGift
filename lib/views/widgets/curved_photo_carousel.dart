@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// A cylindrical "coverflow" style photo carousel: cards curve away from the
@@ -34,17 +35,23 @@ class _CurvedPhotoCarouselState extends State<CurvedPhotoCarousel> {
     super.initState();
     final initialPage = (_loopMultiplier ~/ 2) * _count;
     _page = initialPage.toDouble();
-    _controller =
-        PageController(viewportFraction: 0.62, initialPage: initialPage);
+    _controller = PageController(
+      viewportFraction: 0.62,
+      initialPage: initialPage,
+    );
     _controller.addListener(() {
       final p = _controller.page;
       if (p != null) setState(() => _page = p);
     });
     if (_count > 1) {
       _autoTimer = Timer.periodic(widget.autoPlayInterval, (_) {
-        if (!mounted) return;
+        if (!mounted ||
+            !_controller.hasClients ||
+            _controller.position.isScrollingNotifier.value) {
+          return;
+        }
         _controller.nextPage(
-          duration: const Duration(milliseconds: 900),
+          duration: const Duration(milliseconds: 1200),
           curve: Curves.easeInOutCubic,
         );
       });
@@ -61,28 +68,35 @@ class _CurvedPhotoCarouselState extends State<CurvedPhotoCarousel> {
   @override
   Widget build(BuildContext context) {
     if (_count == 0) return const SizedBox.shrink();
-    return PageView.builder(
-      controller: _controller,
-      itemCount: _count * _loopMultiplier,
-      itemBuilder: (context, index) {
-        final asset = widget.imageAssets[index % _count];
-        final delta = (index - _page).clamp(-1.0, 1.0);
-        // Rotate around the Y axis and pull back in Z, as if each photo is
-        // painted on the inside of a slowly turning drum.
-        final angle = delta * 0.9;
-        final scale = 1 - delta.abs() * 0.22;
-        final translateX = -delta * 18;
-        return Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.0016)
-            ..translateByDouble(translateX, 0.0, 0.0, 1.0)
-            ..rotateY(angle)
-            ..scaleByDouble(scale, scale, scale, 1.0),
-          child: Opacity(
-            opacity: 1 - delta.abs() * 0.35,
-            child: _PhotoCard(imageAsset: asset),
-          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final pageWidth = constraints.maxWidth * 0.62;
+        const angleStep = 0.85;
+        final radius = pageWidth / math.sin(angleStep);
+        return PageView.builder(
+          controller: _controller,
+          itemCount: _count * _loopMultiplier,
+          itemBuilder: (context, index) {
+            final asset = widget.imageAssets[index % _count];
+            final delta = (index - _page).clamp(-2.0, 2.0);
+            final angle = delta * angleStep;
+            // Follow the outside of a cylinder: the center is closest, and
+            // each side recedes in depth with its outer edge turning away.
+            // Subtract PageView's horizontal movement to follow a circular arc.
+            final translateX = radius * math.sin(angle) - delta * pageWidth;
+            final depth = radius * (math.cos(angle) - 1);
+            return Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, -0.0016)
+                ..translateByDouble(translateX, 0.0, depth, 1.0)
+                ..rotateY(angle),
+              child: Opacity(
+                opacity: 1 - delta.abs().clamp(0.0, 1.0) * 0.18,
+                child: _PhotoCard(imageAsset: asset),
+              ),
+            );
+          },
         );
       },
     );
@@ -122,8 +136,11 @@ class _PhotoCard extends StatelessWidget {
     return Container(
       color: const Color(0xFFF3E4D0),
       alignment: Alignment.center,
-      child: const Icon(Icons.image_outlined,
-          size: 48, color: Color(0xFFB08B62)),
+      child: const Icon(
+        Icons.image_outlined,
+        size: 48,
+        color: Color(0xFFB08B62),
+      ),
     );
   }
 }

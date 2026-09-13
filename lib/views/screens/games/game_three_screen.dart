@@ -1,31 +1,73 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_intro_overlay.dart';
 
-/// A platform, in fractional world coordinates (0..1 of the play area).
-class _Platform {
-  final double x;
-  final double y;
-  final double width;
-  const _Platform(this.x, this.y, this.width);
-  static const height = 0.035;
+// '#' wall, '.' path, 'S' start, 'G' goal. Every variant shares the same
+// size and the same S/G corners, so swapping layouts mid-game never strands
+// the player or the goal on a wall.
+const _mazeVariants = [
+  [
+    '###############',
+    '#S....#.......#',
+    '#####.#.#.###.#',
+    '#.....#.#...#.#',
+    '#.#####.###.###',
+    '#.#.......#...#',
+    '#.###.#####.#.#',
+    '#...#.#...#.#.#',
+    '###.###.#.###.#',
+    '#.#.#...#...#.#',
+    '#.#.#.#####.#.#',
+    '#.....#......G#',
+    '###############',
+  ],
+  [
+    '###############',
+    '#S#...#.#.....#',
+    '#.#.#.#.#.###.#',
+    '#...#.#.....#.#',
+    '#####.#.#####.#',
+    '#...#.#.#.#...#',
+    '#.###.#.#.#.#.#',
+    '#.#...#...#.#.#',
+    '#.#.#######.#.#',
+    '#.#.#.......#.#',
+    '#.#.###.#####.#',
+    '#.......#....G#',
+    '###############',
+  ],
+  [
+    '###############',
+    '#S..#.......#.#',
+    '###.#.###.#.#.#',
+    '#.#.#...#.#...#',
+    '#.#.#####.#####',
+    '#...#...#.....#',
+    '#.###.#.#.###.#',
+    '#.#...#.#.#...#',
+    '#.#.###.###.#.#',
+    '#...#.#.#...#.#',
+    '#####.#.#.###.#',
+    '#.........#..G#',
+    '###############',
+  ],
+];
+
+class _Point {
+  final int row;
+  final int col;
+  const _Point(this.row, this.col);
 }
 
-class _LevelConfig {
-  final List<_Platform> platforms;
-  final List<Offset> stars;
-  final Offset start;
-  const _LevelConfig({
-    required this.platforms,
-    required this.stars,
-    required this.start,
-  });
-}
+/// Which way the walking sprite is currently turned to face.
+enum _Facing { up, down, left, right }
 
-/// 2D side-scroller: move with on-screen left/right/jump controls and
-/// collect every star without falling into a pit.
+/// Grid maze: guide the character through the maze to the heart using the
+/// on-screen arrows before the clock runs out. The heart makes a run for it
+/// once, fleeing back to the start the first time you get close.
 class GameThreeScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
@@ -42,194 +84,149 @@ class GameThreeScreen extends StatefulWidget {
   State<GameThreeScreen> createState() => _GameThreeScreenState();
 }
 
-class _GameThreeScreenState extends State<GameThreeScreen>
-    with SingleTickerProviderStateMixin {
-  static const _playerW = 0.09;
-  static const _playerH = 0.09;
-  static const _gravity = 2.6;
-  static const _jumpVelocity = -1.35;
-  static const _moveSpeed = 0.55;
-  static const _fallLimit = 1.15;
-  static const _starRadius = 0.06;
+class _GameThreeScreenState extends State<GameThreeScreen> {
+  static const _timeLimit = 90;
+  static const _playerAsset = 'assets/photos/game3_move.gif';
+  static const _goalAsset = 'assets/photos/game3_1.gif';
+  static const _successAsset = 'assets/photos/game3_success.gif';
 
-  static final _levels = [
-    _LevelConfig(
-      start: const Offset(0.05, 0.78),
-      platforms: const [
-        _Platform(0, 0.92, 1.0),
-        _Platform(0.12, 0.68, 0.24),
-        _Platform(0.64, 0.55, 0.26),
-      ],
-      stars: const [
-        Offset(0.22, 0.635),
-        Offset(0.76, 0.505),
-        Offset(0.5, 0.87),
-      ],
-    ),
-    _LevelConfig(
-      start: const Offset(0.05, 0.78),
-      platforms: const [
-        _Platform(0, 0.92, 0.34),
-        _Platform(0.55, 0.92, 0.45),
-        _Platform(0.37, 0.74, 0.2),
-        _Platform(0.12, 0.58, 0.2),
-      ],
-      stars: const [
-        Offset(0.47, 0.695),
-        Offset(0.22, 0.535),
-        Offset(0.82, 0.875),
-      ],
-    ),
-    _LevelConfig(
-      start: const Offset(0.03, 0.78),
-      platforms: const [
-        _Platform(0, 0.92, 0.24),
-        _Platform(0.4, 0.92, 0.2),
-        _Platform(0.75, 0.92, 0.25),
-        _Platform(0.21, 0.72, 0.18),
-        _Platform(0.57, 0.72, 0.18),
-        _Platform(0.38, 0.5, 0.2),
-      ],
-      stars: const [
-        Offset(0.30, 0.675),
-        Offset(0.66, 0.675),
-        Offset(0.48, 0.455),
-        Offset(0.86, 0.875),
-      ],
-    ),
-  ];
+  final _rnd = Random();
+  late final int _rows = _mazeVariants.first.length;
+  late final int _cols = _mazeVariants.first[0].length;
+  late final _Point _start = _findChar(_mazeVariants.first, 'S');
+  late final _Point _goal = _findChar(_mazeVariants.first, 'G');
+  late List<String> _mazeRows;
 
-  late Ticker _ticker;
-  Duration _lastElapsed = Duration.zero;
-  double _worldW = 320;
-  double _worldH = 520;
-
-  int _levelIndex = 0;
-  double _px = 0;
-  double _py = 0;
-  double _vy = 0;
-  bool _grounded = false;
-  bool _movingLeft = false;
-  bool _movingRight = false;
-  late List<bool> _starCollected;
-  int _collectedCount = 0;
+  int _playerRow = 0;
+  int _playerCol = 0;
+  // The sprite's native artwork faces left, so that's the unrotated pose.
+  _Facing _facing = _Facing.left;
+  late _Point _currentGoal;
+  bool _goalFled = false;
+  int _secondsLeft = _timeLimit;
+  Timer? _clock;
+  Timer? _messageTimer;
   String? _message;
   bool _finished = false;
+  bool _won = false;
+  bool _claimed = false;
   late bool _introDone;
 
-  _LevelConfig get _level => _levels[_levelIndex];
+  _Point _findChar(List<String> maze, String char) {
+    for (int r = 0; r < maze.length; r++) {
+      final c = maze[r].indexOf(char);
+      if (c != -1) return _Point(r, c);
+    }
+    return const _Point(1, 1);
+  }
+
+  /// A different maze layout than the one currently shown.
+  List<String> _pickDifferentMaze() {
+    final others = _mazeVariants.where((m) => m != _mazeRows).toList();
+    return others[_rnd.nextInt(others.length)];
+  }
+
+  bool _isWall(int row, int col) {
+    if (row < 0 || row >= _rows || col < 0 || col >= _cols) return true;
+    return _mazeRows[row][col] == '#';
+  }
 
   @override
   void initState() {
     super.initState();
     _introDone = !widget.showIntro;
-    _ticker = createTicker(_onTick);
     _resetLevelState();
-    if (_introDone) _ticker.start();
+    if (_introDone) _startClock();
   }
 
   void _onIntroStart() {
     setState(() => _introDone = true);
-    _ticker.start();
+    _startClock();
   }
 
   void _resetLevelState() {
-    _px = _level.start.dx;
-    _py = _level.start.dy;
-    _vy = 0;
-    _grounded = false;
-    _movingLeft = false;
-    _movingRight = false;
-    _starCollected = List.filled(_level.stars.length, false);
-    _collectedCount = 0;
+    _mazeRows = _mazeVariants.first;
+    _playerRow = _start.row;
+    _playerCol = _start.col;
+    _facing = _Facing.left;
+    _currentGoal = _goal;
+    _goalFled = false;
+    _secondsLeft = _timeLimit;
     _message = null;
     _finished = false;
-    _lastElapsed = Duration.zero;
+    _won = false;
+    _claimed = false;
   }
 
-  void _onTick(Duration elapsed) {
-    if (_finished || !_introDone) {
-      _lastElapsed = elapsed;
-      return;
-    }
-    if (_lastElapsed == Duration.zero) {
-      _lastElapsed = elapsed;
-      return;
-    }
-    final dt = ((elapsed - _lastElapsed).inMicroseconds / 1e6).clamp(0.0, 0.032);
-    _lastElapsed = elapsed;
-    if (dt > 0) _update(dt);
-  }
-
-  void _update(double dt) {
-    final vx = _movingLeft && !_movingRight
-        ? -_moveSpeed
-        : (_movingRight && !_movingLeft ? _moveSpeed : 0.0);
-    final newX = (_px + vx * dt).clamp(0.0, 1.0 - _playerW);
-
-    var vy = _vy + _gravity * dt;
-    final newY = _py + vy * dt;
-
-    final playerLeft = newX;
-    final playerRight = newX + _playerW;
-    final bottomPrev = _py + _playerH;
-    final bottomNew = newY + _playerH;
-
-    bool grounded = false;
-    double resolvedY = newY;
-    if (vy >= 0) {
-      for (final p in _level.platforms) {
-        final platLeft = p.x;
-        final platRight = p.x + p.width;
-        final platTop = p.y;
-        final overlaps = playerRight > platLeft && playerLeft < platRight;
-        if (overlaps && bottomPrev <= platTop + 0.01 && bottomNew >= platTop) {
-          resolvedY = platTop - _playerH;
-          vy = 0;
-          grounded = true;
-          break;
-        }
-      }
-    }
-
-    for (int i = 0; i < _level.stars.length; i++) {
-      if (_starCollected[i]) continue;
-      final s = _level.stars[i];
-      final dx = (s.dx - (newX + _playerW / 2)).abs();
-      final dy = (s.dy - (resolvedY + _playerH / 2)).abs();
-      if (dx < _starRadius && dy < _starRadius) {
-        _starCollected[i] = true;
-        _collectedCount++;
-      }
-    }
-
-    setState(() {
-      _px = newX;
-      _py = resolvedY;
-      _vy = vy;
-      _grounded = grounded;
+  void _startClock() {
+    _clock?.cancel();
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_finished) return;
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) _fail();
     });
+  }
 
-    if (_collectedCount >= _level.stars.length) {
+  bool _isAdjacentToCurrentGoal() {
+    final dr = (_playerRow - _currentGoal.row).abs();
+    final dc = (_playerCol - _currentGoal.col).abs();
+    return dr + dc == 1;
+  }
+
+  _Facing _facingFor(int dRow, int dCol) {
+    if (dCol == 1) return _Facing.right;
+    if (dCol == -1) return _Facing.left;
+    if (dRow == -1) return _Facing.up;
+    return _Facing.down;
+  }
+
+  void _move(int dRow, int dCol) {
+    if (_finished) return;
+    final newRow = _playerRow + dRow;
+    final newCol = _playerCol + dCol;
+    final facing = _facingFor(dRow, dCol);
+    if (_isWall(newRow, newCol)) {
+      setState(() => _facing = facing);
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {
+      _playerRow = newRow;
+      _playerCol = newCol;
+      _facing = facing;
+    });
+    if (_playerRow == _currentGoal.row && _playerCol == _currentGoal.col) {
       _levelClear();
       return;
     }
-    if (resolvedY > _fallLimit) {
-      _fail();
+    if (!_goalFled && _isAdjacentToCurrentGoal()) {
+      _fleeGoal();
     }
   }
 
-  void _jump() {
-    if (!_grounded || _finished) return;
+  void _fleeGoal() {
+    HapticFeedback.heavyImpact();
+    _messageTimer?.cancel();
     setState(() {
-      _vy = _jumpVelocity;
-      _grounded = false;
+      _goalFled = true;
+      _mazeRows = _pickDifferentMaze();
+      // Drop the player back in at the same corner the new maze's goal
+      // sits in, so they re-enter through a spot that's always open.
+      _playerRow = _goal.row;
+      _playerCol = _goal.col;
+      _facing = _Facing.left;
+      _currentGoal = _start;
+      _message = '它跑掉啦！迷宫也变了，追回起点抓住它～';
+    });
+    _messageTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted && !_finished) setState(() => _message = null);
     });
   }
 
   void _fail() {
     _finished = true;
-    setState(() => _message = '掉下去了，再试一次！');
+    _clock?.cancel();
+    setState(() => _message = '时间到啦，再试一次！');
     Timer(const Duration(milliseconds: 900), () {
       if (mounted) widget.onLose();
     });
@@ -237,43 +234,72 @@ class _GameThreeScreenState extends State<GameThreeScreen>
 
   void _levelClear() {
     _finished = true;
-    if (_levelIndex >= _levels.length - 1) {
-      setState(() => _message = '通关啦！🎉');
-      Timer(const Duration(milliseconds: 700), widget.onComplete);
-    } else {
-      setState(() => _message = 'Level ${_levelIndex + 1} 完成！');
-      Timer(const Duration(milliseconds: 900), () {
-        if (!mounted) return;
-        setState(() {
-          _levelIndex++;
-          _resetLevelState();
-        });
-      });
-    }
+    _won = true;
+    _clock?.cancel();
+    HapticFeedback.mediumImpact();
+    setState(() => _message = null);
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _clock?.cancel();
+    _messageTimer?.cancel();
     super.dispose();
   }
 
-  Widget _controlButton(IconData icon,
-      {required VoidCallback onPress, VoidCallback? onDown, VoidCallback? onUp}) {
+  Widget _arrowButton(IconData icon, int dRow, int dCol) {
     return GestureDetector(
-      onTapDown: onDown == null ? null : (_) => onDown(),
-      onTapUp: onUp == null ? null : (_) => onUp(),
-      onTapCancel: onUp,
-      onTap: onDown == null ? onPress : null,
+      onTap: () => _move(dRow, dCol),
       child: Container(
-        width: 58,
-        height: 58,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.25),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white38),
         ),
-        child: Icon(icon, color: Colors.white, size: 28),
+        child: Icon(icon, color: Colors.white, size: 26),
+      ),
+    );
+  }
+
+  /// The sprite's artwork faces left by default, so right needs a
+  /// horizontal flip, and up/down are faked with a 90° rotation.
+  Widget _playerSprite(double cell) {
+    double angle;
+    bool flip;
+    switch (_facing) {
+      case _Facing.left:
+        angle = 0;
+        flip = false;
+        break;
+      case _Facing.right:
+        angle = 0;
+        flip = true;
+        break;
+      case _Facing.up:
+        angle = pi / 2;
+        flip = false;
+        break;
+      case _Facing.down:
+        angle = -pi / 2;
+        flip = false;
+        break;
+    }
+    return Padding(
+      padding: EdgeInsets.all(cell * 0.1),
+      child: AnimatedRotation(
+        turns: angle / (2 * pi),
+        duration: const Duration(milliseconds: 160),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.diagonal3Values(flip ? -1.0 : 1.0, 1.0, 1.0),
+          child: Image.asset(
+            _playerAsset,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        ),
       ),
     );
   }
@@ -283,111 +309,180 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     return Stack(
       children: [
         GameBackground(
-          title: '星星大冒险',
-          level: _levelIndex + 1,
-          levelCount: _levels.length,
+          title: '迷宫大冒险',
+          level: 1,
+          levelCount: 1,
           backgroundImage: 'assets/photos/game3.png',
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              _worldW = constraints.maxWidth;
-              _worldH = constraints.maxHeight;
-              return Stack(
-                children: [
-                  Positioned(
-                    top: 8,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Text(
-                        '⭐ $_collectedCount / ${_level.stars.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                    ),
+          child: Column(
+            children: [
+              const SizedBox(height: 6),
+              Text(
+                '⏱ $_secondsLeft s',
+                style: TextStyle(
+                  color: _secondsLeft <= 10 ? Colors.pinkAccent : Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (_message != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _message!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                  if (_message != null)
-                    Positioned(
-                      top: 40,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Text(
-                          _message!,
-                          style: const TextStyle(
+                ),
+              ],
+              const SizedBox(height: 8),
+              Expanded(
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: _cols / _rows,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: LayoutBuilder(
+                        builder: (context, box) {
+                          final cell = box.maxWidth / _cols;
+                          return Container(
+                            decoration: BoxDecoration(
                               color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold),
-                        ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Stack(
+                              children: [
+                                for (int r = 0; r < _rows; r++)
+                                  for (int c = 0; c < _cols; c++)
+                                    if (_mazeRows[r][c] == '#')
+                                      Positioned(
+                                        left: c * cell,
+                                        top: r * cell,
+                                        width: cell,
+                                        height: cell,
+                                        child: Container(
+                                          margin: const EdgeInsets.all(1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF8D6748),
+                                            borderRadius:
+                                                BorderRadius.circular(3),
+                                          ),
+                                        ),
+                                      ),
+                                AnimatedPositioned(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeInOut,
+                                  left: _currentGoal.col * cell,
+                                  top: _currentGoal.row * cell,
+                                  width: cell,
+                                  height: cell,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(cell * 0.1),
+                                    child: Image.asset(
+                                      _goalAsset,
+                                      fit: BoxFit.contain,
+                                      gaplessPlayback: true,
+                                    ),
+                                  ),
+                                ),
+                                AnimatedPositioned(
+                                  duration: const Duration(milliseconds: 140),
+                                  curve: Curves.easeOut,
+                                  left: _playerCol * cell,
+                                  top: _playerRow * cell,
+                                  width: cell,
+                                  height: cell,
+                                  child: _playerSprite(cell),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  for (final p in _level.platforms)
-                    Positioned(
-                      left: p.x * _worldW,
-                      top: p.y * _worldH,
-                      width: p.width * _worldW,
-                      height: _Platform.height * _worldH,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF8D6748),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                      ),
-                    ),
-                  for (int i = 0; i < _level.stars.length; i++)
-                    if (!_starCollected[i])
-                      Positioned(
-                        left: _level.stars[i].dx * _worldW - 12,
-                        top: _level.stars[i].dy * _worldH - 12,
-                        child: const Text('⭐', style: TextStyle(fontSize: 24)),
-                      ),
-                  Positioned(
-                    left: _px * _worldW,
-                    top: _py * _worldH,
-                    width: _playerW * _worldW,
-                    height: _playerH * _worldH,
-                    child: const Center(
-                      child: Text('🐥', style: TextStyle(fontSize: 32)),
                     ),
                   ),
-                  Positioned(
-                    left: 16,
-                    bottom: 16,
-                    child: Row(
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20, top: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _arrowButton(Icons.keyboard_arrow_up, -1, 0),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _controlButton(
-                          Icons.arrow_back,
-                          onPress: () {},
-                          onDown: () => _movingLeft = true,
-                          onUp: () => _movingLeft = false,
-                        ),
-                        const SizedBox(width: 12),
-                        _controlButton(
-                          Icons.arrow_forward,
-                          onPress: () {},
-                          onDown: () => _movingRight = true,
-                          onUp: () => _movingRight = false,
-                        ),
+                        _arrowButton(Icons.keyboard_arrow_left, 0, -1),
+                        const SizedBox(width: 40),
+                        _arrowButton(Icons.keyboard_arrow_right, 0, 1),
                       ],
                     ),
-                  ),
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: _controlButton(
-                      Icons.arrow_upward,
-                      onPress: _jump,
-                    ),
-                  ),
-                ],
-              );
-            },
+                    const SizedBox(height: 8),
+                    _arrowButton(Icons.keyboard_arrow_down, 1, 0),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
+        if (_won)
+          Center(
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xF22D223C),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      _successAsset,
+                      width: 130,
+                      height: 130,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '成功找到布布啦！',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '获得一把钥匙 🔑',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () {
+                      if (_claimed) return;
+                      _claimed = true;
+                      widget.onComplete();
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFBBD0),
+                      foregroundColor: const Color(0xFF392239),
+                    ),
+                    child: const Text('领取钥匙，回到小屋'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         if (!_introDone)
           GameIntroOverlay(
-            title: '星星大冒险',
+            title: '迷宫大冒险',
             instructionText:
-                '星星大冒险～ 用左右按钮移动，跳跃按钮起跳\n收集地图上所有星星就过关\n小心别掉进坑里哦～',
+                '用下方的箭头带小鸡走出迷宫\n快到爱心时它会跑回起点，迷宫也会变新哦，别灰心追上去～\n时间限制 $_timeLimit 秒，加油哦～',
             onStart: _onIntroStart,
           ),
       ],

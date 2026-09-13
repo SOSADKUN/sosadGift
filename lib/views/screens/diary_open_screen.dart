@@ -12,7 +12,9 @@ class DiaryOpenScreen extends StatelessWidget {
       assetPath: 'assets/videos/diaryOpen.mp4',
       loop: false,
       showTapToSkip: false,
-      onComplete: onComplete, 
+      containFrom: const Duration(seconds: 10),
+      containedBackgroundColor: Colors.white,
+      onComplete: onComplete,
     );
   }
 }
