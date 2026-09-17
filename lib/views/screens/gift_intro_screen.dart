@@ -16,9 +16,9 @@ class GiftIntroScreen extends StatefulWidget {
 class _GiftIntroScreenState extends State<GiftIntroScreen>
     with SingleTickerProviderStateMixin {
   static const _sentences = [
-    '前年我的生日app不是很完美',
-    '今年我回来了！！噗哈哈哈',
-    '这次也有30秒点30个小鸡毛哟OwO',
+    '前年我的生日app的game不是很完美',
+    '今年我又回来了！！噗哈哈哈',
+    '然后这次也有30秒点30个小鸡毛哟OwO',
     'Lezz go 展示',
   ];
   static const _gold = Color(0xFFECD2A4);

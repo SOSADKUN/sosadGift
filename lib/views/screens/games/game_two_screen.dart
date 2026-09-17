@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
 
 class _Pad {
@@ -51,6 +52,9 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
   bool _showingSequence = true;
   String? _message;
   bool _finished = false;
+  bool _failed = false;
+  Timer? _nextRoundTimer;
+  Timer? _padTimer;
   late bool _introDone;
   Timer? _playTimer;
 
@@ -68,6 +72,9 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
 
   void _startLevel() {
     _playTimer?.cancel();
+    _nextRoundTimer?.cancel();
+    _padTimer?.cancel();
+    _failed = false;
     _sequence
       ..clear()
       ..addAll(List.generate(_startLength, (_) => _rnd.nextInt(_pads.length)));
@@ -113,7 +120,8 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
       return;
     }
     setState(() => _activePad = index);
-    Timer(const Duration(milliseconds: 150), () {
+    _padTimer?.cancel();
+    _padTimer = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       setState(() => _activePad = -1);
     });
@@ -122,20 +130,23 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
       if (_sequence.length >= _winLength) {
         _levelClear();
       } else {
-        setState(
-          () => _sequence.add(_rnd.nextInt(_pads.length)),
-        );
-        Timer(const Duration(milliseconds: 500), _playSequence);
+        setState(() => _sequence.add(_rnd.nextInt(_pads.length)));
+        _showingSequence = true;
+        _nextRoundTimer = Timer(const Duration(milliseconds: 500), () {
+          if (mounted && !_finished) _playSequence();
+        });
       }
     }
   }
 
   void _fail() {
-    _finished = true;
+    _playTimer?.cancel();
+    _nextRoundTimer?.cancel();
+    _padTimer?.cancel();
     HapticFeedback.heavyImpact();
-    setState(() => _message = '记错顺序啦，再试一次！');
-    Timer(const Duration(milliseconds: 900), () {
-      if (mounted) widget.onLose();
+    setState(() {
+      _finished = true;
+      _failed = true;
     });
   }
 
@@ -151,6 +162,8 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
   @override
   void dispose() {
     _playTimer?.cancel();
+    _nextRoundTimer?.cancel();
+    _padTimer?.cancel();
     super.dispose();
   }
 
@@ -249,6 +262,12 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
             ),
           ),
         ),
+        if (_failed)
+          GameFailureOverlay(
+            title: '记错顺序啦！',
+            onRetry: _startLevel,
+            onExit: widget.onLose,
+          ),
         if (!_introDone)
           GameIntroOverlay(
             title: '心动记忆',

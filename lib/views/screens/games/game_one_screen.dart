@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
 
 /// One friendly round: catch 30 feathers in 30 seconds to earn one key.
@@ -104,6 +105,8 @@ class _GameOneScreenState extends State<GameOneScreen>
 
   void _spawn() {
     if (!mounted || _finished) return;
+    final fast = _random.nextDouble() < 0.30;
+    _float.repeat(period: Duration(milliseconds: fast ? 900 : 1600));
     setState(() {
       _position = Offset(_random.nextDouble(), _random.nextDouble());
       _visible = true;
@@ -335,7 +338,7 @@ class _GameOneScreenState extends State<GameOneScreen>
                               ],
                             ),
                           ),
-                        if (_finished)
+                        if (_finished && _count == _goal)
                           Center(
                             child: Container(
                               margin: const EdgeInsets.all(20),
@@ -413,11 +416,16 @@ class _GameOneScreenState extends State<GameOneScreen>
             ],
           ),
         ),
+        if (_finished && _count < _goal)
+          GameFailureOverlay(
+            title: '时间到啦，抓到了 $_count 个！',
+            onRetry: () => _start(),
+            onExit: widget.onLose,
+          ),
         if (!_introDone)
           GameIntroOverlay(
             title: '小鸡毛大作战',
-            instructionText:
-                '30 秒内，点到 30 个小鸡毛！\n小鸡毛会飞来飞去，点中会轻轻震动～\n完成就能拿到一把钥匙 ♡',
+            instructionText: '30 秒内，点到 30 个小鸡毛！\n小鸡毛会飞来飞去哦～\n完成就能拿到一把钥匙 ♡',
             onStart: _onIntroStart,
           ),
       ],

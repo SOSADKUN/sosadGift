@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/game_failure_overlay.dart';
+import '../../widgets/explosion_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
 
 enum _HoleKind { clickable, bomb }
@@ -20,7 +22,6 @@ const _clickableAssets = [
 ];
 const _bombAsset = 'assets/photos/game4_boom.gif';
 const _boomAsset = 'assets/photos/game4_booooom.gif';
-const _failAsset = 'assets/photos/fail.gif';
 
 /// Whack-a-mole: 布布 pop up at random holes, tap them fast to collect a
 /// key. Tapping the bomb ends the round immediately — a big boom plays,
@@ -57,6 +58,8 @@ class _GameFourScreenState extends State<GameFourScreen> {
   int _secondsLeft = _timeLimit;
   Timer? _spawnTimer;
   Timer? _clock;
+  Timer? _boomTimer;
+  Timer? _impactTimer;
   String? _message;
   bool _finished = false;
   bool _won = false;
@@ -82,6 +85,8 @@ class _GameFourScreenState extends State<GameFourScreen> {
   void _startLevel() {
     _spawnTimer?.cancel();
     _clock?.cancel();
+    _boomTimer?.cancel();
+    _impactTimer?.cancel();
     for (final t in _hideTimers) {
       t?.cancel();
     }
@@ -146,9 +151,15 @@ class _GameFourScreenState extends State<GameFourScreen> {
     _finished = true;
     _spawnTimer?.cancel();
     _clock?.cancel();
-    HapticFeedback.heavyImpact();
+    HapticFeedback.vibrate();
+    _impactTimer = Timer(const Duration(milliseconds: 180), () {
+      if (mounted && _exploding) HapticFeedback.heavyImpact();
+    });
+    for (final timer in _hideTimers) {
+      timer?.cancel();
+    }
     setState(() => _exploding = true);
-    Timer(_boomDuration, () {
+    _boomTimer = Timer(_boomDuration, () {
       if (!mounted) return;
       setState(() {
         _exploding = false;
@@ -161,9 +172,12 @@ class _GameFourScreenState extends State<GameFourScreen> {
     _finished = true;
     _spawnTimer?.cancel();
     _clock?.cancel();
-    setState(() => _message = '时间到啦，再试一次！');
-    Timer(const Duration(milliseconds: 900), () {
-      if (mounted) widget.onLose();
+    for (final timer in _hideTimers) {
+      timer?.cancel();
+    }
+    setState(() {
+      _failedByBomb = true;
+      _message = '时间到啦！';
     });
   }
 
@@ -180,6 +194,8 @@ class _GameFourScreenState extends State<GameFourScreen> {
   void dispose() {
     _spawnTimer?.cancel();
     _clock?.cancel();
+    _boomTimer?.cancel();
+    _impactTimer?.cancel();
     for (final t in _hideTimers) {
       t?.cancel();
     }
@@ -294,79 +310,12 @@ class _GameFourScreenState extends State<GameFourScreen> {
             ),
           ),
         ),
-        if (_exploding)
-          Positioned.fill(
-            child: ColoredBox(
-              color: Colors.black.withValues(alpha: 0.55),
-              child: Center(
-                child: Image.asset(
-                  _boomAsset,
-                  width: 220,
-                  height: 220,
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                ),
-              ),
-            ),
-          ),
+        if (_exploding) ExplosionOverlay(asset: _boomAsset),
         if (_failedByBomb)
-          Center(
-            child: Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xF22D223C),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Image.asset(
-                      _failAsset,
-                      width: 130,
-                      height: 130,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '呀，点到炸弹啦！',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '别灰心，回去再挑战一次吧～',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: _startLevel,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFBBD0),
-                      foregroundColor: const Color(0xFF392239),
-                    ),
-                    child: const Text('再试一次'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      if (_claimed) return;
-                      _claimed = true;
-                      widget.onLose();
-                    },
-                    child: const Text(
-                      '先回小屋',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          GameFailureOverlay(
+            title: _message ?? '呀，点到炸弹啦！',
+            onRetry: _startLevel,
+            onExit: widget.onLose,
           ),
         if (_won)
           Center(

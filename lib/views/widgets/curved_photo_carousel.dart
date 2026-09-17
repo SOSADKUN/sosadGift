@@ -73,10 +73,12 @@ class _CurvedPhotoCarouselState extends State<CurvedPhotoCarousel> {
         final pageWidth = constraints.maxWidth * 0.62;
         const angleStep = 0.85;
         final radius = pageWidth / math.sin(angleStep);
-        return PageView.builder(
+        return PageView.custom(
           controller: _controller,
-          itemCount: _count * _loopMultiplier,
-          itemBuilder: (context, index) {
+          childrenDelegate: _ExactCarouselDelegate(
+            itemExtent: pageWidth,
+            childCount: _count * _loopMultiplier,
+            builder: (context, index) {
             final asset = widget.imageAssets[index % _count];
             final delta = (index - _page).clamp(-2.0, 2.0);
             final angle = delta * angleStep;
@@ -96,11 +98,31 @@ class _CurvedPhotoCarouselState extends State<CurvedPhotoCarousel> {
                 child: _PhotoCard(imageAsset: asset),
               ),
             );
-          },
+            },
+          ),
         );
       },
     );
   }
+}
+
+/// Avoid estimating a huge list from the difference between large pixel
+/// offsets: fractional card widths otherwise accumulate rounding errors.
+class _ExactCarouselDelegate extends SliverChildBuilderDelegate {
+  final double itemExtent;
+  _ExactCarouselDelegate({
+    required NullableIndexedWidgetBuilder builder,
+    required int childCount,
+    required this.itemExtent,
+  }) : super(builder, childCount: childCount);
+
+  @override
+  double estimateMaxScrollOffset(
+    int firstIndex,
+    int lastIndex,
+    double leadingScrollOffset,
+    double trailingScrollOffset,
+  ) => childCount! * itemExtent;
 }
 
 class _PhotoCard extends StatelessWidget {
