@@ -1,33 +1,17 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:audioplayers/audioplayers.dart';
+import '../../config/treasure_hunt_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// Final screen: digital cake with a candle to blow out.
-///
-/// Two ways to extinguish the candle:
-///   1. Tap it (always works, no permissions needed).
-///   2. Actually blow into the microphone — uses `noise_meter` to watch
-///      ambient decibel level and treats a sudden loud burst of noise
-///      close to the mic as a "blow".
-///
-/// Setup required for real blow detection:
-///   pubspec.yaml:
-///     dependencies:
-///       record: ^5.0.0
-///       permission_handler: ^11.3.0
-///
-///   Android (android/app/src/main/AndroidManifest.xml):
-///     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-///
-///   iOS (ios/Runner/Info.plist):
-///     <key>NSMicrophoneUsageDescription</key>
-///     <string>需要麦克风来检测吹蜡烛的动作</string>
+/// Birthday cake with instrumental music and tap or microphone candle control.
 class DigitalCakeScreen extends StatefulWidget {
-  const DigitalCakeScreen({super.key});
+  const DigitalCakeScreen({super.key, this.onComplete});
+  final VoidCallback? onComplete;
 
   @override
   State<DigitalCakeScreen> createState() => _DigitalCakeScreenState();
@@ -35,6 +19,10 @@ class DigitalCakeScreen extends StatefulWidget {
 
 class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     with TickerProviderStateMixin {
+  final _birthdayPlayer = AudioPlayer();
+  Timer? _finaleTimer;
+  StreamSubscription<void>? _birthdayComplete;
+  bool _songFinished = false;
   bool _blownOut = false;
   bool _micActive = false;
 
@@ -78,14 +66,15 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
 
     _particles = List.generate(26, (i) => _Particle(seed: i));
 
-    _flyController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _crossfadeController.forward();
-        }
-      });
+    _flyController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 1400),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed) {
+            _crossfadeController.forward();
+          }
+        });
 
     _crossfadeController = AnimationController(
       vsync: this,
@@ -99,7 +88,27 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
       if (mounted) _flyController.forward();
     });
 
+    _birthdayComplete = _birthdayPlayer.onPlayerComplete.listen((_) {
+      _songFinished = true;
+      _scheduleFinale();
+    });
+    _playBirthdaySong();
     _initMic();
+  }
+
+  Future<void> _playBirthdaySong() async {
+    try {
+      await _birthdayPlayer.setReleaseMode(ReleaseMode.release);
+      if (!mounted) return;
+      await _birthdayPlayer.play(
+        AssetSource(TreasureHuntConfig.birthdaySong),
+        volume: 0.65,
+      );
+    } catch (error) {
+      debugPrint('Birthday music unavailable: $error');
+      _songFinished = true;
+      _scheduleFinale();
+    }
   }
 
   Future<void> _initMic() async {
@@ -154,10 +163,27 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     _blowController.forward(from: 0);
     _audioSub?.cancel();
     _recorder.stop();
+    _scheduleFinale();
+  }
+
+  void _scheduleFinale() {
+    if (!mounted ||
+        !_blownOut ||
+        !_songFinished ||
+        widget.onComplete == null ||
+        _finaleTimer != null) {
+      return;
+    }
+    _finaleTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) widget.onComplete?.call();
+    });
   }
 
   @override
   void dispose() {
+    _finaleTimer?.cancel();
+    _birthdayComplete?.cancel();
+    _birthdayPlayer.dispose();
     _flameController.dispose();
     _blowController.dispose();
     _glowController.dispose();
@@ -200,7 +226,10 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
               opacity: introOpacity,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final size = Size(constraints.maxWidth, constraints.maxHeight);
+                  final size = Size(
+                    constraints.maxWidth,
+                    constraints.maxHeight,
+                  );
                   return Stack(
                     children: [
                       for (final d in _digits)
@@ -227,14 +256,19 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   }
 
   Widget _buildDigit(_DigitParticle d, Size size, double progress) {
-    final localProgress =
-        ((progress - d.delay) / (1 - d.delay)).clamp(0.0, 1.0);
+    final localProgress = ((progress - d.delay) / (1 - d.delay)).clamp(
+      0.0,
+      1.0,
+    );
     final eased = Curves.easeOutCubic.transform(localProgress);
 
     final center = Offset(size.width / 2, size.height / 2);
-    final halfDiagonal = sqrt(size.width * size.width + size.height * size.height) / 2;
-    final start = center +
-        Offset(cos(d.startAngle), sin(d.startAngle)) * (d.startRadius * halfDiagonal);
+    final halfDiagonal =
+        sqrt(size.width * size.width + size.height * size.height) / 2;
+    final start =
+        center +
+        Offset(cos(d.startAngle), sin(d.startAngle)) *
+            (d.startRadius * halfDiagonal);
     final target = center + d.targetJitter;
     final pos = Offset.lerp(start, target, eased)!;
     final scale = 1.0 - eased * 0.5;
@@ -279,7 +313,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    Colors.orange.withOpacity(opacity),
+                    Colors.orange.withValues(alpha: opacity),
                     Colors.transparent,
                   ],
                 ),
@@ -311,10 +345,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                   ),
 
                   // The cake.
-                  const Positioned(
-                    bottom: 0,
-                    child: CustomPaintCakeWrapper(),
-                  ),
+                  const Positioned(bottom: 0, child: CustomPaintCakeWrapper()),
 
                   // The candle flame — tap fallback always available.
                   Positioned(
@@ -327,8 +358,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                         child: AnimatedBuilder(
                           animation: _flameController,
                           builder: (context, _) {
-                            final flicker =
-                                0.85 + _flameController.value * 0.3;
+                            final flicker = 0.85 + _flameController.value * 0.3;
                             return AnimatedOpacity(
                               duration: const Duration(milliseconds: 400),
                               opacity: _blownOut ? 0.0 : 1.0,
@@ -386,9 +416,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _micActive
-                              ? '然后对着屏幕吹一口气，吹熄蜡烛'
-                              : '然后点一下蜡烛，吹熄它吧',
+                          _micActive ? '然后对着屏幕吹一口气，吹熄蜡烛' : '然后点一下蜡烛，吹熄它吧',
                           style: const TextStyle(
                             color: Colors.white38,
                             fontSize: 13,
@@ -410,10 +438,7 @@ class CustomPaintCakeWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(180, 170),
-      painter: _CakePainter(),
-    );
+    return CustomPaint(size: const Size(180, 170), painter: _CakePainter());
   }
 }
 
@@ -431,21 +456,21 @@ class _DigitParticle {
   final double delay; // staggers when this digit starts moving, 0..1
 
   _DigitParticle({required int seed})
-      : char = Random(seed).nextBool() ? '0' : '1',
-        startAngle = Random(seed + 1).nextDouble() * 2 * pi,
-        startRadius = 1.0 + Random(seed + 2).nextDouble() * 0.6,
-        targetJitter = Offset(
-          (Random(seed + 3).nextDouble() - 0.5) * 40,
-          (Random(seed + 4).nextDouble() - 0.5) * 40,
-        ),
-        fontSize = 14 + Random(seed + 5).nextDouble() * 14,
-        color = const [
-          Colors.pinkAccent,
-          Colors.white,
-          Color(0xFFB388FF),
-          Color(0xFF80D8FF),
-        ][seed % 4],
-        delay = Random(seed + 6).nextDouble() * 0.35;
+    : char = Random(seed).nextBool() ? '0' : '1',
+      startAngle = Random(seed + 1).nextDouble() * 2 * pi,
+      startRadius = 1.0 + Random(seed + 2).nextDouble() * 0.6,
+      targetJitter = Offset(
+        (Random(seed + 3).nextDouble() - 0.5) * 40,
+        (Random(seed + 4).nextDouble() - 0.5) * 40,
+      ),
+      fontSize = 14 + Random(seed + 5).nextDouble() * 14,
+      color = const [
+        Colors.pinkAccent,
+        Colors.white,
+        Color(0xFFB388FF),
+        Color(0xFF80D8FF),
+      ][seed % 4],
+      delay = Random(seed + 6).nextDouble() * 0.35;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,16 +484,16 @@ class _Particle {
   final Color color;
 
   _Particle({required int seed})
-      : angle = Random(seed).nextDouble() * pi + pi * 1.25,
-        speed = 40 + Random(seed + 1).nextDouble() * 70,
-        size = 3 + Random(seed + 2).nextDouble() * 5,
-        color = const [
-          Color(0xFFFFC107),
-          Color(0xFFFF4081),
-          Color(0xFF40C4FF),
-          Color(0xFFFFFFFF),
-          Color(0xFF69F0AE),
-        ][seed % 5];
+    : angle = Random(seed).nextDouble() * pi + pi * 1.25,
+      speed = 40 + Random(seed + 1).nextDouble() * 70,
+      size = 3 + Random(seed + 2).nextDouble() * 5,
+      color = const [
+        Color(0xFFFFC107),
+        Color(0xFFFF4081),
+        Color(0xFF40C4FF),
+        Color(0xFFFFFFFF),
+        Color(0xFF69F0AE),
+      ][seed % 5];
 }
 
 class _ParticlePainter extends CustomPainter {
@@ -492,12 +517,8 @@ class _ParticlePainter extends CustomPainter {
       final dx = cos(p.angle) * p.speed * t;
       final dy = sin(p.angle) * p.speed * t - 90 * t * t; // upward arc
       final opacity = (1 - t).clamp(0.0, 1.0);
-      final paint = Paint()..color = p.color.withOpacity(opacity);
-      canvas.drawCircle(
-        origin + Offset(dx, dy),
-        p.size * (1 - t * 0.4),
-        paint,
-      );
+      final paint = Paint()..color = p.color.withValues(alpha: opacity);
+      canvas.drawCircle(origin + Offset(dx, dy), p.size * (1 - t * 0.4), paint);
     }
   }
 
@@ -514,10 +535,22 @@ class _FlamePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final outerPath = Path()
       ..moveTo(size.width / 2, 0)
-      ..cubicTo(size.width * 1.1, size.height * 0.4, size.width * 0.8,
-          size.height * 0.7, size.width / 2, size.height)
-      ..cubicTo(size.width * 0.2, size.height * 0.7, -size.width * 0.1,
-          size.height * 0.4, size.width / 2, 0);
+      ..cubicTo(
+        size.width * 1.1,
+        size.height * 0.4,
+        size.width * 0.8,
+        size.height * 0.7,
+        size.width / 2,
+        size.height,
+      )
+      ..cubicTo(
+        size.width * 0.2,
+        size.height * 0.7,
+        -size.width * 0.1,
+        size.height * 0.4,
+        size.width / 2,
+        0,
+      );
 
     final outerPaint = Paint()
       ..shader = const LinearGradient(
@@ -529,10 +562,22 @@ class _FlamePainter extends CustomPainter {
 
     final innerPath = Path()
       ..moveTo(size.width / 2, size.height * 0.3)
-      ..cubicTo(size.width * 0.75, size.height * 0.55, size.width * 0.65,
-          size.height * 0.8, size.width / 2, size.height * 0.95)
-      ..cubicTo(size.width * 0.35, size.height * 0.8, size.width * 0.25,
-          size.height * 0.55, size.width / 2, size.height * 0.3);
+      ..cubicTo(
+        size.width * 0.75,
+        size.height * 0.55,
+        size.width * 0.65,
+        size.height * 0.8,
+        size.width / 2,
+        size.height * 0.95,
+      )
+      ..cubicTo(
+        size.width * 0.35,
+        size.height * 0.8,
+        size.width * 0.25,
+        size.height * 0.55,
+        size.width / 2,
+        size.height * 0.3,
+      );
     canvas.drawPath(innerPath, Paint()..color = const Color(0xFFFFF9C4));
   }
 
@@ -552,8 +597,12 @@ class _CakePainter extends CustomPainter {
 
     // Plate shadow.
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(w / 2, h - 6), width: w * 0.95, height: 14),
-      Paint()..color = Colors.black.withOpacity(0.25),
+      Rect.fromCenter(
+        center: Offset(w / 2, h - 6),
+        width: w * 0.95,
+        height: 14,
+      ),
+      Paint()..color = Colors.black.withValues(alpha: 0.25),
     );
 
     // Bottom tier.
@@ -622,7 +671,7 @@ class _CakePainter extends CustomPainter {
           colors: [Colors.white, Color(0xFFE0E0E0)],
         ).createShader(candleRect),
     );
-    final stripePaint = Paint()..color = Colors.pinkAccent.withOpacity(0.6);
+    final stripePaint = Paint()..color = Colors.pinkAccent.withValues(alpha: 0.6);
     for (double y = candleRect.top + 4; y < candleRect.bottom; y += 8) {
       canvas.drawRect(
         Rect.fromLTWH(candleRect.left, y, candleRect.width, 3),

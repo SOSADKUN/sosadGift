@@ -8,7 +8,7 @@ class DiaryPageBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: const Color(0xFFF4DFDC),
+    color: const Color(0xFFF9F3E8),
     child: Stack(
       fit: StackFit.expand,
       children: [
@@ -24,8 +24,36 @@ class _ScrapbookPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final background = Rect.fromLTWH(0, 0, size.width, size.height);
+    // Keep the blush at the top of the scrapbook, then let the photo area
+    // blend into the paper so the side cards do not sit on pink gutters.
+    canvas.drawRect(
+      background,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: [0, 0.28, 0.55, 1],
+          colors: [
+            Color(0xFFF4DFDC),
+            Color(0xFFF4DFDC),
+            Color(0xFFF9F3E8),
+            Color(0xFFF9F3E8),
+          ],
+        ).createShader(background),
+    );
     final gingham = Paint()
-      ..color = const Color(0xFFD39DA4).withValues(alpha: 0.14);
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        stops: [0, 0.28, 0.55, 1],
+        colors: [
+          Color(0x24D39DA4),
+          Color(0x24D39DA4),
+          Color(0x00D39DA4),
+          Color(0x00D39DA4),
+        ],
+      ).createShader(background);
     for (double x = 0; x < size.width; x += 28) {
       canvas.drawRect(Rect.fromLTWH(x, 0, 14, size.height), gingham);
     }

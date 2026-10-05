@@ -55,7 +55,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
   final Set<int> _instructionsShown = {};
   _Mood _mood = _Mood.none;
   Timer? _moodTimer;
-  Timer? _advanceTimer;
+  bool _showCompletionPopup = false;
+  bool _continuing = false;
 
   void _openGame(int index) async {
     if (_solved.contains(index)) return;
@@ -80,14 +81,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
     setState(() {
       _solved.add(index);
       _mood = _Mood.celebrate;
+      if (_solved.length == _games.length) _showCompletionPopup = true;
     });
-    _resetMoodAfter(const Duration(seconds: 2));
-
-    if (_solved.length == _games.length) {
-      _advanceTimer = Timer(const Duration(milliseconds: 1600), () {
-        if (mounted) widget.onAllGamesComplete();
-      });
-    }
+    if (!_showCompletionPopup) _resetMoodAfter(const Duration(seconds: 2));
   }
 
   void _loseGame(int index) {
@@ -106,7 +102,6 @@ class _GameHubScreenState extends State<GameHubScreen> {
   @override
   void dispose() {
     _moodTimer?.cancel();
-    _advanceTimer?.cancel();
     super.dispose();
   }
 
@@ -115,11 +110,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
     return Stack(
       children: [
         // Background + door art both come from the video.
-        const Positioned.fill(
+        Positioned.fill(
           child: VideoPlayerWidget(
             assetPath: 'assets/videos/gameHub.mp4',
             loop: true,
             showTapToSkip: false,
+            paused: _showCompletionPopup,
           ),
         ),
 
@@ -227,6 +223,72 @@ class _GameHubScreenState extends State<GameHubScreen> {
             ],
           ),
         ),
+        if (_showCompletionPopup)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (_continuing) return;
+                _continuing = true;
+                widget.onAllGamesComplete();
+              },
+              child: ColoredBox(
+                color: const Color(0xB9000010),
+                child: Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF5EB),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: const Color(0xFFFFD398),
+                        width: 2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black45, blurRadius: 25),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'assets/photos/game4_2.gif',
+                              width: 90,
+                              height: 90,
+                            ),
+                            const SizedBox(width: 12),
+                            const Flexible(
+                              child: Text(
+                                '恭喜你！\n四把钥匙都收集齐了 ✨',
+                                style: TextStyle(
+                                  color: Color(0xFF744158),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          '点击屏幕，前往最后一道门',
+                          style: TextStyle(
+                            color: Color(0xFF9E6876),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

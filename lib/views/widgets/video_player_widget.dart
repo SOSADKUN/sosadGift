@@ -8,6 +8,7 @@ class VideoPlayerWidget extends StatefulWidget {
   final bool loop;
   final bool showTapToSkip;
   final bool landscape;
+  final bool paused;
 
   /// Show the entire frame within the phone's safe area from this timestamp.
   final Duration? containFrom;
@@ -20,6 +21,7 @@ class VideoPlayerWidget extends StatefulWidget {
     this.loop = false,
     this.showTapToSkip = true,
     this.landscape = false,
+    this.paused = false,
     this.containFrom,
     this.containedBackgroundColor = Colors.black,
   });
@@ -52,10 +54,22 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         if (!mounted) return;
         setState(() => _ready = true);
         _controller.setLooping(widget.loop);
-        _controller.play();
+        if (!widget.paused) _controller.play();
       });
 
     _controller.addListener(_checkFinished);
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPlayerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.paused != widget.paused && _ready) {
+      if (widget.paused) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
+    }
   }
 
   void _checkFinished() {

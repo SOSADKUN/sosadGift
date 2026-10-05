@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flame/game.dart';
+import '../../../games/feather_game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
@@ -23,11 +25,12 @@ class GameOneScreen extends StatefulWidget {
 }
 
 class _GameOneScreenState extends State<GameOneScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   static const _goal = 30;
   final _random = Random();
   final _elapsed = Stopwatch();
-  late final AnimationController _float;
+  late final FeatherGame _game;
+  bool _gameLoaded = false;
   Timer? _clock;
   Timer? _respawn;
   late bool _introDone;
@@ -38,18 +41,20 @@ class _GameOneScreenState extends State<GameOneScreen>
   bool _finished = false;
   bool _claimed = false;
   bool _paused = false;
-  Offset _position = const Offset(0.5, 0.5);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _float = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat();
+    _game = FeatherGame(
+      onCatch: _hit,
+      onReady: () {
+        if (!mounted) return;
+        _gameLoaded = true;
+        if (_introDone) _start(withReadyCountdown: !widget.showIntro);
+      },
+    );
     _introDone = !widget.showIntro;
-    if (_introDone) _start();
   }
 
   void _onIntroStart() {
@@ -61,6 +66,7 @@ class _GameOneScreenState extends State<GameOneScreen>
   void _start({bool withReadyCountdown = true}) {
     _clock?.cancel();
     _respawn?.cancel();
+    _game.resetEffects();
     _elapsed
       ..reset()
       ..stop();
@@ -72,8 +78,9 @@ class _GameOneScreenState extends State<GameOneScreen>
       _visible = false;
       _claimed = false;
     });
+    if (!_gameLoaded) return;
     if (!withReadyCountdown) {
-      _elapsed.start();
+      if (!_paused) _elapsed.start();
       _spawn();
       _clock = Timer.periodic(
         const Duration(milliseconds: 100),
@@ -86,7 +93,7 @@ class _GameOneScreenState extends State<GameOneScreen>
       setState(() => _ready--);
       if (_ready == 0) {
         _clock?.cancel();
-        _elapsed.start();
+        if (!_paused) _elapsed.start();
         _spawn();
         _clock = Timer.periodic(
           const Duration(milliseconds: 100),
@@ -106,9 +113,11 @@ class _GameOneScreenState extends State<GameOneScreen>
   void _spawn() {
     if (!mounted || _finished) return;
     final fast = _random.nextDouble() < 0.30;
-    _float.repeat(period: Duration(milliseconds: fast ? 900 : 1600));
+    _game.showTarget(
+      Offset(_random.nextDouble(), _random.nextDouble()),
+      fast: fast,
+    );
     setState(() {
-      _position = Offset(_random.nextDouble(), _random.nextDouble());
       _visible = true;
     });
   }
@@ -119,6 +128,7 @@ class _GameOneScreenState extends State<GameOneScreen>
       _finish(false);
       return;
     }
+    _game.targetVisible = false;
     HapticFeedback.lightImpact();
     setState(() {
       _count++;
@@ -136,6 +146,7 @@ class _GameOneScreenState extends State<GameOneScreen>
     _clock?.cancel();
     _respawn?.cancel();
     _elapsed.stop();
+    _game.targetVisible = false;
     setState(() {
       _finished = true;
       _visible = false;
@@ -148,9 +159,11 @@ class _GameOneScreenState extends State<GameOneScreen>
     _paused = state != AppLifecycleState.resumed;
     if (_paused) {
       _elapsed.stop();
-    } else if (_introDone && _ready == 0 && !_finished) {
-      _elapsed.start();
+      _game.pauseEngine();
+    } else if (_gameLoaded && _introDone && _ready == 0 && !_finished) {
+      if (!_paused) _elapsed.start();
     }
+    if (!_paused) _game.resumeEngine();
   }
 
   @override
@@ -159,12 +172,13 @@ class _GameOneScreenState extends State<GameOneScreen>
     _clock?.cancel();
     _respawn?.cancel();
     _elapsed.stop();
-    _float.dispose();
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _game.reducedMotion = MediaQuery.disableAnimationsOf(context);
     const pink = Color(0xFFFFBBD0);
     return Stack(
       children: [
@@ -243,11 +257,19 @@ class _GameOneScreenState extends State<GameOneScreen>
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: _count / _goal,
-                        minHeight: 8,
-                        color: pink,
-                        backgroundColor: Colors.white12,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(end: _count / _goal),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, progress, _) =>
+                            LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 8,
+                              color: pink,
+                              backgroundColor: Colors.white12,
+                            ),
                       ),
                     ),
                   ],
@@ -256,12 +278,23 @@ class _GameOneScreenState extends State<GameOneScreen>
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, box) {
-                    final targetSize = min(
-                      112.0,
-                      min(box.maxWidth, box.maxHeight),
-                    );
                     return Stack(
                       children: [
+                        Positioned.fill(
+                          child: Semantics(
+                            button: true,
+                            label: '抓住小鸡毛',
+                            onTap: _visible ? _game.catchTarget : null,
+                            child: ClipRect(
+                              child: GameWidget<FeatherGame>(
+                                game: _game,
+                                loadingBuilder: (_) => const Center(
+                                  child: CircularProgressIndicator(color: pink),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                         if (!_finished && _ready == 0)
                           const Align(
                             alignment: Alignment.bottomCenter,
@@ -275,45 +308,6 @@ class _GameOneScreenState extends State<GameOneScreen>
                                 ),
                               ),
                             ),
-                          ),
-                        if (_visible)
-                          AnimatedBuilder(
-                            animation: _float,
-                            builder: (context, _) {
-                              final reducedMotion =
-                                  MediaQuery.disableAnimationsOf(context);
-                              final phase = _float.value * pi * 2;
-                              // A continuous flying loop, safely inside the play area.
-                              final x =
-                                  0.20 +
-                                  _position.dx * 0.60 +
-                                  (reducedMotion ? 0.0 : sin(phase) * 0.18);
-                              final y =
-                                  0.16 +
-                                  _position.dy * 0.68 +
-                                  (reducedMotion ? 0.0 : cos(phase) * 0.14);
-                              return Positioned(
-                                left: x * max(0, box.maxWidth - targetSize),
-                                top:
-                                    y * max(0, box.maxHeight - targetSize - 44),
-                                child: Semantics(
-                                  button: true,
-                                  label: '抓住小鸡毛',
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: _hit,
-                                    child: Container(
-                                      width: targetSize,
-                                      height: targetSize,
-                                      padding: const EdgeInsets.all(12),
-                                      child: Image.asset(
-                                        'assets/photos/jimao.gif',
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
                           ),
                         if (_ready > 0 && !_finished)
                           Center(

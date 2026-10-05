@@ -42,8 +42,10 @@ dependencies:
   mobile_scanner: ^7.4.1
   google_fonts: ^6.2.1
   audioplayers: ^6.1.0
+  flame: ^1.38.2
   
 dev_dependencies:
+  qr: ^3.0.2
   flutter_test:
     sdk: flutter
 
@@ -77,9 +79,14 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/last_display_image/
+    - assets/music/
+    - assets/audio/
     - assets/videos/diaryLoading.mp4
     - assets/videos/diaryOpen.mp4
     - assets/videos/gameHub.mp4
+    - assets/videos/bigDoor.mp4
+    - assets/photos/bigDoor.png
     - assets/photos/character.gif
     - assets/icon/app_icon.png
     - assets/photos/game1.png

@@ -8,6 +8,11 @@ import 'screens/games/game_hub_screen.dart';
 import 'screens/password_screen.dart';
 import 'screens/gift_reveal_screen.dart';
 import 'screens/digital_cake_screen.dart';
+import 'screens/four_key_door_screen.dart';
+import 'screens/door_opening_screen.dart';
+import 'screens/treasure_hunt_screen.dart';
+import 'screens/surprise_countdown_screen.dart';
+import 'screens/memory_finale_screen.dart';
 
 enum FlowStep {
   diaryLoading, // mp4 1: loading screen
@@ -15,8 +20,13 @@ enum FlowStep {
   storyRecap, // 4-year story: 认识/驾车/bhotel/PD
   giftIntro, // black screen + bgm + popping sentences leading into the games
   gameHub, // 3(4) mini games -> unlocks the code
+  fourKeyDoor,
+  doorOpening,
+  treasureHunt,
+  surpriseCountdown,
   password, // enter 0917
   giftReveal, // gift voucher reveal
+  memoryFinale,
   digitalCake, // close eyes, blow candle
 }
 
@@ -26,9 +36,12 @@ const List<FlowStep> kFlowOrder = [
   FlowStep.storyRecap,
   FlowStep.giftIntro,
   FlowStep.gameHub,
-  FlowStep.password,
-  FlowStep.giftReveal,
+  FlowStep.fourKeyDoor,
+  FlowStep.doorOpening,
+  FlowStep.treasureHunt,
+  FlowStep.surpriseCountdown,
   FlowStep.digitalCake,
+  FlowStep.memoryFinale,
 ];
 
 class AppFlow extends StatefulWidget {
@@ -47,11 +60,6 @@ class _AppFlowState extends State<AppFlow> {
     }
   }
 
-  // Handy if you ever want a "skip for testing" button during dev.
-  void _jumpTo(FlowStep step) {
-    setState(() => _index = kFlowOrder.indexOf(step));
-  }
-
   Widget _build(FlowStep step) {
     switch (step) {
       case FlowStep.diaryLoading:
@@ -64,23 +72,36 @@ class _AppFlowState extends State<AppFlow> {
         return GiftIntroScreen(onComplete: _next);
       case FlowStep.gameHub:
         return GameHubScreen(onAllGamesComplete: _next);
+      case FlowStep.fourKeyDoor:
+        return FourKeyDoorScreen(onComplete: _next);
+      case FlowStep.doorOpening:
+        return DoorOpeningScreen(onComplete: _next);
+      case FlowStep.treasureHunt:
+        return TreasureHuntScreen(onComplete: _next);
+      case FlowStep.surpriseCountdown:
+        return SurpriseCountdownScreen(onComplete: _next);
       case FlowStep.password:
         return PasswordScreen(correctCode: '0917', onCorrect: _next);
       case FlowStep.giftReveal:
         return GiftRevealScreen(onComplete: _next);
       case FlowStep.digitalCake:
-        return const DigitalCakeScreen();
+        return DigitalCakeScreen(onComplete: _next);
+      case FlowStep.memoryFinale:
+        return const MemoryFinaleScreen();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final enteringHub = kFlowOrder[_index] == FlowStep.gameHub;
+    final enteringDoor = kFlowOrder[_index] == FlowStep.fourKeyDoor;
     final enteringDiary = kFlowOrder[_index] == FlowStep.storyRecap;
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedSwitcher(
       duration: Duration(
-        milliseconds: reducedMotion
+        milliseconds: enteringDoor
+            ? 0
+            : reducedMotion
             ? 200
             : enteringDiary
             ? 1800

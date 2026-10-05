@@ -129,7 +129,7 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
                                   ),
                                   const SizedBox(height: 18),
                                   Text(
-                                    'A LITTLE ADVENTURE',
+                                    'Just Some Mini Game',
                                     style: GoogleFonts.cormorantGaramond(
                                       fontSize: 15,
                                       letterSpacing: 3.5,
@@ -170,7 +170,7 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
                                         ),
                                         const SizedBox(height: 16),
                                         Text(
-                                          '小小挑战，藏着大大惊喜',
+                                          '今年的生日 APP卷土重来',
                                           style: GoogleFonts.notoSansSc(
                                             fontSize: 12,
                                             letterSpacing: 2,
