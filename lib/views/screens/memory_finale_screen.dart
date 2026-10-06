@@ -1,45 +1,31 @@
-import 'dart:ui';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../config/memory_display_config.dart';
+import '../../games/memory_album_game.dart';
+export '../../games/memory_float_pose.dart';
 
-/// An endless photo film, discovered from the installed asset manifest.
 class MemoryFinaleScreen extends StatefulWidget {
-  const MemoryFinaleScreen({super.key});
-
+  const MemoryFinaleScreen({super.key, this.useMockPhotos = false});
+  final bool useMockPhotos;
   @override
   State<MemoryFinaleScreen> createState() => _MemoryFinaleScreenState();
 }
 
 class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late final AnimationController _film;
+    with WidgetsBindingObserver {
   final _music = AudioPlayer();
-  List<String> _photos = [];
-  int _index = 0;
+  final _progress = ValueNotifier<(int, double)>((0, 0));
+  MemoryAlbumGame? _album;
+  int _photoCount = 0;
   bool _loading = true;
   bool _active = true;
-  String? _error;
-  String? _cachedNext;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _film =
-        AnimationController(
-          vsync: this,
-          duration: MemoryDisplayConfig.photoDuration,
-        )..addStatusListener((status) {
-          if (status != AnimationStatus.completed || !mounted) return;
-          setState(
-            () =>
-                _index = MemoryDisplayConfig.nextIndex(_index, _photos.length),
-          );
-          _preloadNext();
-          if (_active) _film.forward(from: 0);
-        });
     _loadPhotos();
     _playMusic();
   }
@@ -48,19 +34,35 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       if (!mounted) return;
+      final assets = manifest.listAssets();
+      var photos = widget.useMockPhotos
+          ? <String>[]
+          : MemoryDisplayConfig.orderedPhotos(assets);
+      if (photos.isEmpty) {
+        photos =
+            assets
+                .where(
+                  (path) => RegExp(
+                    r'^assets/photos/story/202[2345]/[^/]+\.jpg$',
+                  ).hasMatch(path),
+                )
+                .toList()
+              ..sort();
+      }
+      final album = MemoryAlbumGame(
+        photos: photos,
+        onProgress: (index, progress) {
+          if (mounted) _progress.value = (index, progress);
+        },
+      );
+      if (!_active) album.pauseEngine();
       setState(() {
-        _photos = MemoryDisplayConfig.orderedPhotos(manifest.listAssets());
+        _album = album;
+        _photoCount = photos.length;
         _loading = false;
       });
-      _preloadNext();
-      if (_photos.isNotEmpty && _active) _film.forward();
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = '回忆暂时无法加载';
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -74,205 +76,134 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     try {
       await _music.setReleaseMode(ReleaseMode.loop);
       if (!mounted) return;
-      await _music.play(AssetSource(track), volume: .55);
+      await _music.play(AssetSource(track), volume: .5);
       if (!_active) await _music.pause();
-    } catch (error) {
-      debugPrint('Memory music unavailable: $error');
-    }
-  }
-
-  void _preloadNext() {
-    if (_photos.isEmpty) return;
-    final next = _photos[MemoryDisplayConfig.nextIndex(_index, _photos.length)];
-    if (next == _cachedNext) return;
-    _cachedNext = next;
-    // Decode only the next image, rather than keeping the entire album in RAM.
-    precacheImage(
-      ResizeImage(AssetImage(next), width: 1400),
-      context,
-      onError: (_, _) {},
-    );
+    } catch (_) {}
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _active = state == AppLifecycleState.resumed;
     if (_active) {
-      if (_photos.isNotEmpty) _film.forward();
-      _music.resume();
+      _album?.resumeEngine();
+      _music.resume().catchError((Object _) {});
     } else {
-      _film.stop();
-      _music.pause();
+      _album?.pauseEngine();
+      _music.pause().catchError((Object _) {});
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _film.dispose();
-    _music.dispose();
+    _music.dispose().catchError((Object _) {});
+    _progress.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    _album?.reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF151113),
+      backgroundColor: const Color(0xFF100D19),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFFECD2A4)),
             )
-          : _photos.isEmpty
-          ? Center(
+          : _photoCount == 0
+          ? const Center(
               child: Text(
-                _error ?? '属于我们的回忆，等你放进来 ♡',
-                style: const TextStyle(color: Color(0xFFECD2A4), fontSize: 20),
+                '属于我们的回忆 ♡',
+                style: TextStyle(color: Color(0xFFECD2A4)),
               ),
             )
-          : AnimatedBuilder(
-              animation: _film,
-              builder: (context, _) {
-                final t = _film.value;
-                final dissolve = Curves.easeInOut.transform(
-                  ((t - .72) / .28).clamp(0.0, 1.0),
-                );
-                final next = MemoryDisplayConfig.nextIndex(
-                  _index,
-                  _photos.length,
-                );
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _photo(_index, .2 + .8 * t, reducedMotion),
-                    if (_photos.length > 1)
-                      Opacity(
-                        opacity: dissolve,
-                        child: _photo(
-                          next,
-                          .2 * ((t - .72) / .28).clamp(0.0, 1.0),
-                          reducedMotion,
-                        ),
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                GameWidget(game: _album!),
+                IgnorePointer(
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
                       ),
-                    const IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Color(0x55151113),
-                              Colors.transparent,
-                              Color(0xBB151113),
-                            ],
-                            stops: [0, .55, 1],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'OUR INFINITE LITTLE UNIVERSE',
+                            style: TextStyle(
+                              color: Color(0xFFD3BBA9),
+                              fontSize: 9,
+                              letterSpacing: 2.8,
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                    SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 28,
-                          vertical: 24,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'THE LITTLE THINGS, WITH YOU',
-                              style: TextStyle(
-                                color: Color(0xFFD8C3AB),
-                                fontSize: 10,
-                                letterSpacing: 3,
-                              ),
+                          const SizedBox(height: 9),
+                          const Text(
+                            '属于我们的回忆',
+                            style: TextStyle(
+                              color: Color(0xFFF7E9DE),
+                              fontSize: 19,
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 3,
                             ),
-                            const Spacer(),
-                            const Text(
-                              '每一帧，都是我们。',
-                              style: TextStyle(
-                                color: Color(0xFFF8EEE2),
-                                fontSize: 25,
-                                letterSpacing: 2,
-                                fontFamily: 'serif',
-                              ),
+                          ),
+                          const Spacer(),
+                          const Text(
+                            '有些瞬间，值得一再停留。',
+                            style: TextStyle(
+                              color: Color(0xFFF7E9DE),
+                              fontSize: 17,
+                              letterSpacing: 1.5,
+                              fontFamily: 'serif',
                             ),
-                            const SizedBox(height: 10),
-                            Row(
+                          ),
+                          const SizedBox(height: 14),
+                          ValueListenableBuilder<(int, double)>(
+                            valueListenable: _progress,
+                            builder: (context, progress, _) => Column(
                               children: [
-                                const Expanded(
-                                  child: Text(
-                                    '故事还在继续  ♡',
-                                    style: TextStyle(
-                                      color: Color(0xFFBEAEA0),
-                                      fontSize: 12,
-                                      letterSpacing: 2,
+                                Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'WITH YOU, ALWAYS  /  无限循环',
+                                        style: TextStyle(
+                                          color: Color(0xFFB6A0AB),
+                                          fontSize: 9,
+                                          letterSpacing: 1.5,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    Text(
+                                      '${(progress.$1 + 1).toString().padLeft(3, '0')} / ${_photoCount.toString().padLeft(3, '0')}',
+                                      key: const ValueKey('finale-counter'),
+                                      style: const TextStyle(
+                                        color: Color(0xFFD3BBA9),
+                                        fontSize: 10,
+                                        letterSpacing: 2,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  '${(_index + 1).toString().padLeft(3, '0')} / ${_photos.length.toString().padLeft(3, '0')}',
-                                  style: const TextStyle(
-                                    color: Color(0xFFBEAEA0),
-                                    fontSize: 10,
-                                    letterSpacing: 2,
-                                  ),
+                                const SizedBox(height: 16),
+                                LinearProgressIndicator(
+                                  value: progress.$2,
+                                  minHeight: 1,
+                                  color: const Color(0xFFE3B9C8),
+                                  backgroundColor: const Color(0x33E3B9C8),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
-    );
-  }
-
-  Widget _photo(int index, double progress, bool reducedMotion) {
-    final path = _photos[index];
-    final direction = index.isEven ? 1.0 : -1.0;
-    final zoom = reducedMotion ? 1.0 : 1.015 + progress * .045;
-    final drift = reducedMotion ? 0.0 : direction * (progress - .5) * 12;
-    final image = Image.asset(
-      path,
-      fit: BoxFit.contain,
-      cacheWidth: 1400,
-      errorBuilder: (_, _, _) => const Center(
-        child: Icon(Icons.photo_outlined, color: Colors.white38, size: 60),
-      ),
-    );
-    return ClipRect(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Image.asset(
-              path,
-              fit: BoxFit.cover,
-              cacheWidth: 400,
-              errorBuilder: (_, _, _) =>
-                  const ColoredBox(color: Color(0xFF241B20)),
-            ),
-          ),
-          const ColoredBox(color: Color(0x88151113)),
-          Center(
-            child: Transform.translate(
-              offset: Offset(drift, -drift * .4),
-              child: Transform.scale(
-                scale: zoom,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 70, 20, 145),
-                  child: image,
+                  ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

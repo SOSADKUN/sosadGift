@@ -80,6 +80,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/cake/
     - assets/photos/story/2022/
     - assets/photos/story/2023/
     - assets/photos/story/2024/

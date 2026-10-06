@@ -84,11 +84,19 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
         child: Icon(Icons.movie_outlined, color: Color(0xFFA0847C), size: 32),
       );
     }
-    return Center(
-      child: AspectRatio(
-        aspectRatio: _controller.value.aspectRatio,
-        child: VideoPlayer(_controller),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fitted = applyBoxFit(
+          BoxFit.contain,
+          _controller.value.size,
+          Size(constraints.maxWidth, constraints.maxHeight),
+        ).destination;
+        return SizedBox(
+          width: fitted.width,
+          height: fitted.height,
+          child: VideoPlayer(_controller),
+        );
+      },
     );
   }
 }

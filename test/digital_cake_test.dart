@@ -41,6 +41,24 @@ class BirthdayPlayer implements AudioPlayer {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+Future<void> revealCake(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+    if (find.byKey(const ValueKey('birthday-candle')).evaluate().isNotEmpty) {
+      break;
+    }
+  }
+  expect(find.byKey(const ValueKey('birthday-candle')), findsOneWidget);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 16));
+  await tester.pump(const Duration(milliseconds: 16));
+  await tester.pump(const Duration(seconds: 10));
+  await tester.pump();
+}
+
 void main() {
   setUpAll(() async {
     if (Platform.environment['CAPTURE_CAKE_PREVIEW'] != '1') return;
@@ -75,12 +93,7 @@ void main() {
     await tester.pump();
     expect(player.playedAsset, TreasureHuntConfig.birthdaySong);
     await tester.tapAt(const Offset(50, 200));
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 4200));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1600));
-    await tester.pump(const Duration(milliseconds: 1700));
+    await revealCake(tester);
     await tester.tap(find.byKey(const ValueKey('birthday-candle')));
     await tester.pump();
     expect(find.text('愿你的每一年，都被温柔以待。'), findsOneWidget);
@@ -111,6 +124,8 @@ void main() {
     await tester.pump();
     player.completed.add(null);
     await tester.pump();
+    expect(advances, 0);
+    await revealCake(tester);
     expect(advances, 1);
     await tester.pumpWidget(const SizedBox());
   });
@@ -156,12 +171,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 4200));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1600));
-    await tester.pump(const Duration(milliseconds: 1700));
+    await revealCake(tester);
     expect(tester.takeException(), isNull);
     if (Platform.environment['CAPTURE_CAKE_PREVIEW'] == '1') {
       await tester.pump(const Duration(milliseconds: 800));

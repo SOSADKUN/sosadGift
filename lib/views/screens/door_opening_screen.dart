@@ -50,20 +50,57 @@ class _DoorOpeningScreenState extends State<DoorOpeningScreen>
         animation: _controller,
         builder: (context, _) {
           final opening = Curves.easeInOutCubic.transform(
-            ((_controller.value - .04) / .8).clamp(0.0, 1.0),
+            ((_controller.value - .32) / .48).clamp(0.0, 1.0),
           );
           final white = Curves.easeInOut.transform(
-            ((_controller.value - .25) / .58).clamp(0.0, 1.0),
+            ((_controller.value - .6) / .24).clamp(0.0, 1.0),
           );
           final reduced = MediaQuery.disableAnimationsOf(context);
           return Stack(
             fit: StackFit.expand,
             children: [
               Transform.scale(
-                scale: reduced ? 1 : 1 + opening * .08,
-                child: Image.asset(
-                  'assets/photos/bigDoor.png',
-                  fit: BoxFit.cover,
+                scale: reduced
+                    ? 1
+                    : 1 +
+                          .32 *
+                              Curves.easeInOutCubic.transform(
+                                (_controller.value / .32).clamp(0.0, 1.0),
+                              ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    for (final left in [true, false])
+                      Positioned(
+                        left: left ? 0 : box.maxWidth / 2,
+                        top: 0,
+                        width: box.maxWidth / 2,
+                        height: box.maxHeight,
+                        child: Transform.translate(
+                          offset: Offset(
+                            reduced
+                                ? 0
+                                : (left ? -1 : 1) * box.maxWidth * .6 * opening,
+                            0,
+                          ),
+                          child: ClipRect(
+                            child: OverflowBox(
+                              alignment: left
+                                  ? Alignment.centerLeft
+                                  : Alignment.centerRight,
+                              minWidth: box.maxWidth,
+                              maxWidth: box.maxWidth,
+                              minHeight: box.maxHeight,
+                              maxHeight: box.maxHeight,
+                              child: Image.asset(
+                                'assets/photos/bigDoor.png',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               IgnorePointer(

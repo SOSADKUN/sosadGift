@@ -227,13 +227,13 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
                       boxShadow: [
                         BoxShadow(
                           color: color,
-                          blurRadius: 24,
-                          spreadRadius: 10,
+                          blurRadius: 40,
+                          spreadRadius: 18,
                         ),
                         BoxShadow(
                           color: color.withValues(alpha: .75),
-                          blurRadius: 65,
-                          spreadRadius: 25,
+                          blurRadius: 110,
+                          spreadRadius: 45,
                         ),
                         const BoxShadow(
                           color: Colors.white,

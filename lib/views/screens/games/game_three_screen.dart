@@ -10,6 +10,7 @@ import '../../widgets/game_background.dart';
 import '../../widgets/maze_joystick.dart';
 import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
+import '../../widgets/game_key_reward_overlay.dart';
 
 class _Point {
   final int row;
@@ -42,7 +43,6 @@ class GameThreeScreen extends StatefulWidget {
 class _GameThreeScreenState extends State<GameThreeScreen>
     with WidgetsBindingObserver {
   static const _timeLimit = 90;
-  static const _successAsset = 'assets/photos/game3_success.gif';
 
   late final MazeGame _field;
   Timer? _holdTimer;
@@ -257,7 +257,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
         if (!mounted || _finished) return;
         setState(() {
           _lookAtStart = false;
-          _message = '回到你这里，出发追回它吧！';
+          _message = '他跑回去了！！出发追回它吧！';
         });
         _cameraTimer = _delay(const Duration(milliseconds: 1800), () {
           if (!mounted || _finished) return;
@@ -398,56 +398,13 @@ class _GameThreeScreenState extends State<GameThreeScreen>
           ),
         ),
         if (_won)
-          Center(
-            child: Container(
-              margin: const EdgeInsets.all(20),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xF22D223C),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Image.asset(
-                      _successAsset,
-                      width: 130,
-                      height: 130,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '成功找到布布啦！',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '获得一把钥匙 🔑',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () {
-                      if (_claimed) return;
-                      _claimed = true;
-                      widget.onComplete();
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFBBD0),
-                      foregroundColor: const Color(0xFF392239),
-                    ),
-                    child: const Text('领取钥匙，回到小屋'),
-                  ),
-                ],
-              ),
-            ),
+          GameKeyRewardOverlay(
+            message: '成功找到布布 · 获得一把钥匙 ♡',
+            onClaim: () {
+              if (_claimed) return;
+              _claimed = true;
+              widget.onComplete();
+            },
           ),
         if (_failed)
           GameFailureOverlay(
@@ -461,8 +418,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
         if (!_introDone)
           GameIntroOverlay(
             title: '迷宫大冒险',
-            instructionText:
-                '推动下方摇杆带小鸡走出迷宫～\n时间限制 $_timeLimit 秒，加油哦～',
+            instructionText: '推动下方摇杆带布布走出迷宫～\n时间限制 $_timeLimit 秒，加油哦～',
             onStart: _onIntroStart,
           ),
       ],

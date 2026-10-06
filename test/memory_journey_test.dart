@@ -23,6 +23,26 @@ Future<void> advance(WidgetTester tester, int frames) async {
 
 void main() {
   testWidgets(
+    'next page is only available at the last memory and hides on rewind',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryJourney(entries: entries, onComplete: () {}),
+        ),
+      );
+      expect(find.text('下一页  ↗'), findsNothing);
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byTooltip('下一段回忆'));
+        await tester.pump();
+        expect(find.text('下一页  ↗'), i == 2 ? findsOneWidget : findsNothing);
+      }
+      await tester.tap(find.byTooltip('上一段回忆'));
+      await tester.pump();
+      expect(find.text('下一页  ↗'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'year titles separate each chapter and reverse navigation restores them',
     (tester) async {
       const chapters = [
@@ -140,6 +160,12 @@ void main() {
       await tester.tap(find.byTooltip('下一段回忆'));
       await tester.pump();
       expect(find.text('Our first little memory.'), findsOneWidget);
+      expect(find.text('下一页  ↗'), findsNothing);
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.byTooltip('下一段回忆'));
+        await tester.pump();
+      }
+      expect(find.text('下一页  ↗'), findsOneWidget);
       await tester.tap(find.text('下一页  ↗'));
       await tester.tap(find.text('下一页  ↗'));
       expect(completions, 1);

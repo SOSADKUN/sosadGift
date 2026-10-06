@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
 import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
+import '../../widgets/game_key_reward_overlay.dart';
 
 class _Pad {
   final Color color;
@@ -64,7 +65,8 @@ class _GameTwoScreenState extends State<GameTwoScreen>
   Timer? _padTimer;
   late bool _introDone;
   Timer? _playTimer;
-  Timer? _completionTimer;
+  bool _won = false;
+  bool _claimed = false;
 
   Timer _delay(Duration duration, void Function() callback) =>
       GameTimer(duration, callback, isPaused: () => _paused);
@@ -110,6 +112,8 @@ class _GameTwoScreenState extends State<GameTwoScreen>
     _nextRoundTimer?.cancel();
     _padTimer?.cancel();
     _failed = false;
+    _won = false;
+    _claimed = false;
     _sequence
       ..clear()
       ..addAll(List.generate(_startLength, (_) => _rnd.nextInt(_pads.length)));
@@ -186,17 +190,20 @@ class _GameTwoScreenState extends State<GameTwoScreen>
   }
 
   void _levelClear() {
-    _finished = true;
+    _playTimer?.cancel();
+    _nextRoundTimer?.cancel();
+    _padTimer?.cancel();
     HapticFeedback.mediumImpact();
-    setState(() => _message = '获得一把钥匙！🔑');
-    _completionTimer = _delay(const Duration(milliseconds: 1200), () {
-      if (mounted) widget.onComplete();
+    setState(() {
+      _finished = true;
+      _won = true;
+      _activePad = -1;
+      _message = null;
     });
   }
 
   @override
   void dispose() {
-    _completionTimer?.cancel();
     _playTimer?.cancel();
     _nextRoundTimer?.cancel();
     _padTimer?.cancel();
@@ -262,6 +269,15 @@ class _GameTwoScreenState extends State<GameTwoScreen>
             ),
           ),
         ),
+        if (_won)
+          GameKeyRewardOverlay(
+            message: '5 / 5 关 · 全部记对了，太厉害了 ♡',
+            onClaim: () {
+              if (_claimed) return;
+              _claimed = true;
+              widget.onComplete();
+            },
+          ),
         if (_failed)
           GameFailureOverlay(
             title: '记错顺序啦！',

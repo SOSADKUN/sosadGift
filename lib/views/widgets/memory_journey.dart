@@ -306,19 +306,22 @@ class _MemoryJourneyState extends State<MemoryJourney>
                             style: TextStyle(fontSize: 11, color: _muted),
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            if (_completed) return;
-                            _completed = true;
-                            _stop();
-                            widget.onComplete();
-                          },
-                          style: TextButton.styleFrom(foregroundColor: _ink),
-                          child: const Text(
-                            '下一页  ↗',
-                            style: TextStyle(fontSize: 13),
+                        if (_memories.isNotEmpty &&
+                            _memories[_current].step != null &&
+                            _position >= _end)
+                          TextButton(
+                            onPressed: () {
+                              if (_completed) return;
+                              _completed = true;
+                              _stop();
+                              widget.onComplete();
+                            },
+                            style: TextButton.styleFrom(foregroundColor: _ink),
+                            child: const Text(
+                              '下一页  ↗',
+                              style: TextStyle(fontSize: 13),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ],

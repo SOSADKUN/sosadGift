@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 /// A white space reveals an unidentified object before the phone is discovered.
 class PhoneFloorScene extends StatefulWidget {
@@ -10,29 +11,40 @@ class PhoneFloorScene extends StatefulWidget {
 }
 
 class _PhoneFloorSceneState extends State<PhoneFloorScene>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _arrival = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3600),
     animationBehavior: AnimationBehavior.preserve,
   );
+  late final Ticker _walking;
+  Duration? _lastFrame;
+  int _direction = 0;
+  int? _walkingPointer;
   bool _found = false;
   bool _opening = false;
 
   @override
   void initState() {
     super.initState();
-    _arrival.forward();
+    _walking = createTicker((elapsed) {
+      final last = _lastFrame;
+      _lastFrame = elapsed;
+      if (last == null) return;
+      final dt = ((elapsed - last).inMicroseconds / 1000000).clamp(0.0, .05);
+      _arrival.value = (_arrival.value + dt * _direction / 4).clamp(0.0, 1.0);
+    });
   }
 
   @override
   void dispose() {
+    _walking.dispose();
     _arrival.dispose();
     super.dispose();
   }
 
   void _inspect() {
-    if (_arrival.value < .85 || _found) return;
+    if (_arrival.value < .9 || _found) return;
     setState(() => _found = true);
   }
 
@@ -51,18 +63,17 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
         final reveal = Curves.easeInOutCubic.transform(
           ((_arrival.value - .18) / .67).clamp(0.0, 1.0),
         );
-        final prompt = Curves.easeOut.transform(
-          ((_arrival.value - .85) / .15).clamp(0.0, 1.0),
-        );
         return LayoutBuilder(
           builder: (context, box) => Stack(
             fit: StackFit.expand,
             children: [
               Positioned(
-                left: box.maxWidth / 2 - 62,
-                top: box.maxHeight * .44 - 105,
+                left: box.maxWidth / 2 - (18 + 106 * reveal) / 2,
+                top:
+                    box.maxHeight * (.3 + .14 * reveal) -
+                    (32 + 193 * reveal) / 2,
                 child: Opacity(
-                  opacity: reveal,
+                  opacity: .5 + .5 * _arrival.value,
                   child: AnimatedRotation(
                     turns: _found ? 0 : -.045,
                     duration: const Duration(milliseconds: 600),
@@ -74,8 +85,8 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                         onTap: _inspect,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 700),
-                          width: 124,
-                          height: 225,
+                          width: 18 + 106 * reveal,
+                          height: 32 + 193 * reveal,
                           padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF101014),
@@ -101,57 +112,68 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                           child: AnimatedOpacity(
                             opacity: _found ? 1 : 0,
                             duration: const Duration(milliseconds: 600),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(18),
-                              child: DecoratedBox(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      Color(0xFF62506A),
-                                      Color(0xFF292238),
-                                      Color(0xFF191625),
-                                    ],
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: 42,
-                                      height: 9,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF101014),
-                                        borderRadius: BorderRadius.vertical(
-                                          bottom: Radius.circular(9),
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: 114,
+                                height: 215,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: DecoratedBox(
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFF62506A),
+                                          Color(0xFF292238),
+                                          Color(0xFF191625),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Container(
+                                          width: 42,
+                                          height: 9,
+                                          decoration: const BoxDecoration(
+                                            color: Color(0xFF101014),
+                                            borderRadius: BorderRadius.vertical(
+                                              bottom: Radius.circular(9),
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                        const Spacer(),
+                                        const Icon(
+                                          Icons.lock_outline,
+                                          size: 18,
+                                          color: Colors.white60,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        const Text(
+                                          '一条未读消息',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          width: 35,
+                                          height: 3,
+                                          margin: const EdgeInsets.only(
+                                            bottom: 9,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white54,
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const Spacer(),
-                                    const Icon(
-                                      Icons.lock_outline,
-                                      size: 18,
-                                      color: Colors.white60,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      '一条未读消息',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Container(
-                                      width: 35,
-                                      height: 3,
-                                      margin: const EdgeInsets.only(bottom: 9),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white54,
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -167,9 +189,9 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                 right: 26,
                 bottom: MediaQuery.paddingOf(context).bottom + 42,
                 child: Opacity(
-                  opacity: _found ? 1 : prompt,
+                  opacity: 1,
                   child: IgnorePointer(
-                    ignoring: !_found && prompt < .9,
+                    ignoring: false,
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 350),
                       child: _found
@@ -180,12 +202,36 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                               action: '打开手机',
                               onTap: _open,
                             )
-                          : _card(
+                          : Column(
                               key: const ValueKey('mysterious-object'),
-                              title: '那是什么？',
-                              subtitle: '白光里，似乎有一个黑色的东西…',
-                              action: '走近看看',
-                              onTap: _inspect,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_arrival.value >= .9) ...[
+                                  const Icon(
+                                    Icons.north,
+                                    color: Color(0xFF918890),
+                                  ),
+                                  FilledButton(
+                                    onPressed: _inspect,
+                                    child: const Text('捡起手机'),
+                                  ),
+                                  const SizedBox(height: 14),
+                                ] else ...[
+                                  const Text(
+                                    '远处有一个黑色的东西…',
+                                    style: TextStyle(color: Color(0xFF918890)),
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _walkButton('后退', -1, Icons.south),
+                                    const SizedBox(width: 20),
+                                    _walkButton('前进', 1, Icons.north),
+                                  ],
+                                ),
+                              ],
                             ),
                     ),
                   ),
@@ -197,6 +243,38 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
       },
     ),
   );
+
+  Widget _walkButton(String label, int direction, IconData icon) => Listener(
+    key: ValueKey('phone-walk-$direction'),
+    onPointerDown: (event) {
+      if (_walkingPointer != null) return;
+      _walkingPointer = event.pointer;
+      _direction = direction;
+      _lastFrame = null;
+      _walking.start();
+    },
+    onPointerUp: (event) => _stopWalking(event.pointer),
+    onPointerCancel: (event) => _stopWalking(event.pointer),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1ECEF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [Icon(icon, size: 20), const SizedBox(width: 8), Text(label)],
+      ),
+    ),
+  );
+
+  void _stopWalking(int pointer) {
+    if (_walkingPointer != pointer) return;
+    _walkingPointer = null;
+    _direction = 0;
+    _lastFrame = null;
+    _walking.stop();
+  }
 
   Widget _card({
     required Key key,

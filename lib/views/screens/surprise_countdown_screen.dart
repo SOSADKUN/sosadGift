@@ -67,11 +67,11 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
             const Icon(Icons.auto_awesome, color: Color(0xFFECD2A4), size: 40),
             const SizedBox(height: 24),
             const Text(
-              '你找到最后的秘密了',
+              '恭喜你完成小游戏 居然解密成功',
               style: TextStyle(color: Colors.white, fontSize: 24),
             ),
             const SizedBox(height: 16),
-            const Text('准备好，惊喜即将出现…', style: TextStyle(color: Colors.white70)),
+            const Text('那就最后啦 闭上双眼倒数30秒～ 不能作弊哦', style: TextStyle(color: Colors.white70)),
             const SizedBox(height: 36),
             Text(
               '$_seconds',

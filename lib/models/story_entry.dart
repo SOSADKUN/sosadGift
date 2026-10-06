@@ -26,11 +26,11 @@ final List<StoryEntry> kStoryEntries = [
     title: '原神开端',
     steps: [
       StoryStep(
-        sentence: '看到原神启动的开头吗？其实原神是我们相遇的地方诶！',
+        sentence: '刚刚的开头放原神启动～其实是因为 我觉得原神是我们相遇的地方w！',
         imageAsset: 'assets/photos/story/2022/1.jpg',
       ),
       StoryStep(
-        sentence: '但是其实我们的开头 是从这个story reply开始哈哈哈哈',
+        sentence: '但是其实我们真正的开始 是从这个story reply开始哈哈哈哈',
         imageAsset: 'assets/photos/story/2022/2.jpg',
       ),
       StoryStep(
@@ -39,11 +39,11 @@ final List<StoryEntry> kStoryEntries = [
       ),
       StoryStep(
         sentence: '所以你的生日 我只能从原神里送一个小小的礼物了www',
-        imageAsset: 'assets/photos/story/2022/4.jpg',
+        imageAsset: 'assets/photos/story/2022/5.jpg',
       ),
       StoryStep(
         sentence: '看 当时的你收到20块的月卡居然就说爱我！',
-        imageAsset: 'assets/photos/story/2022/5.jpg',
+        imageAsset: 'assets/photos/story/2022/4.jpg',
       ),
     ],
   ),
