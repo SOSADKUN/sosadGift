@@ -4,6 +4,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../../config/treasure_hunt_config.dart';
 import 'treasure_scanner_screen.dart';
+import '../widgets/found_phone_frame.dart';
+import '../widgets/found_phone_lock_screen.dart';
+import '../widgets/phone_floor_scene.dart';
 
 class TreasureHuntScreen extends StatefulWidget {
   const TreasureHuntScreen({super.key, required this.onComplete});
@@ -13,13 +16,23 @@ class TreasureHuntScreen extends StatefulWidget {
   State<TreasureHuntScreen> createState() => _TreasureHuntScreenState();
 }
 
-class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
-  final _player = AudioPlayer();
+class _TreasureHuntScreenState extends State<TreasureHuntScreen>
+    with SingleTickerProviderStateMixin {
+  AudioPlayer? _voicePlayer;
+  AudioPlayer get _player => _voicePlayer ??= _createPlayer();
   Timer? _arrival;
+  Timer? _secondVoiceArrival;
   StreamSubscription<void>? _audioComplete;
   bool _pickedUp = false;
+  bool _unlocked = false;
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3600),
+    animationBehavior: AnimationBehavior.preserve,
+  );
   bool _voiceArrived = false;
   bool _photoArrived = false;
+  bool _secondVoiceArrived = false;
   bool _playing = false;
   int _voiceIndex = 0;
   bool _loading = false;
@@ -30,19 +43,35 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
   @override
   void initState() {
     super.initState();
-    _audioComplete = _player.onPlayerComplete.listen((_) {
-      if (mounted) {
-        setState(() {
-          _playing = false;
-          _photoArrived = true;
+    _reveal.forward();
+  }
+
+  AudioPlayer _createPlayer() {
+    final player = AudioPlayer();
+    _audioComplete = player.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      final revealPhoto = _voiceIndex == 0 && !_photoArrived;
+      setState(() {
+        _playing = false;
+        if (revealPhoto) _photoArrived = true;
+      });
+      if (revealPhoto) {
+        _secondVoiceArrival = Timer(const Duration(milliseconds: 700), () {
+          if (mounted) setState(() => _secondVoiceArrived = true);
         });
       }
     });
+    return player;
   }
 
   void _pickUp() {
-    if (_pickedUp) return;
+    if (_pickedUp || _reveal.value < .85) return;
     setState(() => _pickedUp = true);
+  }
+
+  void _unlockPhone() {
+    if (_unlocked) return;
+    setState(() => _unlocked = true);
     _arrival = Timer(const Duration(milliseconds: 900), () {
       if (mounted) setState(() => _voiceArrived = true);
     });
@@ -83,7 +112,7 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
     if (_scanning || _completed) return;
     _scanning = true;
     try {
-      await _player.pause();
+      await _voicePlayer?.pause();
     } catch (_) {
       // Scanning remains available if the optional audio is unavailable.
     }
@@ -100,9 +129,11 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
 
   @override
   void dispose() {
+    _reveal.dispose();
     _arrival?.cancel();
+    _secondVoiceArrival?.cancel();
     _audioComplete?.cancel();
-    _player.dispose();
+    _voicePlayer?.dispose();
     super.dispose();
   }
 
@@ -120,78 +151,63 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
   );
 
   @override
-  Widget build(BuildContext context) {
-    if (!_pickedUp) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF241A2D),
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: _pickedUp ? const Color(0xFF211B28) : Colors.white,
+    body: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 650),
+      switchInCurve: Curves.easeOutCubic,
+      child: !_pickedUp
+          ? Stack(
+              key: const ValueKey('floor-scene'),
+              fit: StackFit.expand,
               children: [
-                const Text(
-                  '门后，地上有一部手机…',
-                  style: TextStyle(color: Color(0xFFECD2A4), fontSize: 22),
+                PhoneFloorScene(onPickUp: _pickUp),
+                IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _reveal,
+                    builder: (_, _) {
+                      final visible = Curves.easeInOutCubic.transform(
+                        ((_reveal.value - .12) / .88).clamp(0.0, 1.0),
+                      );
+                      return Opacity(
+                        opacity: 1 - visible,
+                        child: const ColoredBox(
+                          key: ValueKey('room-white-veil'),
+                          color: Colors.white,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-                const SizedBox(height: 70),
-                Transform.rotate(
-                  angle: -.2,
-                  child: Semantics(
-                    button: true,
-                    label: '捡起手机',
-                    child: GestureDetector(
-                      onTap: _pickUp,
-                      child: Container(
-                        width: 130,
-                        height: 240,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10131C),
-                          borderRadius: BorderRadius.circular(25),
-                          border: Border.all(
-                            color: const Color(0xFF998CA8),
-                            width: 4,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black54,
-                              blurRadius: 30,
-                              offset: Offset(18, 24),
-                            ),
-                          ],
-                        ),
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              color: Color(0xFFECD2A4),
-                              size: 44,
-                            ),
-                            SizedBox(height: 18),
-                            Text(
-                              '一条未读消息',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          ],
-                        ),
+              ],
+            )
+          : SafeArea(
+              key: const ValueKey('picked-up-phone'),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 390),
+                    child: FoundPhoneFrame(
+                      dark: !_unlocked,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 400),
+                        child: _unlocked
+                            ? _chatScreen()
+                            : FoundPhoneLockScreen(onUnlocked: _unlockPhone),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 60),
-                TextButton(
-                  onPressed: _pickUp,
-                  child: const Text(
-                    '点击捡起手机',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-      );
-    }
+    ),
+  );
+
+  Widget _chatScreen() {
     return Scaffold(
       backgroundColor: const Color(0xFFF1EDE8),
       appBar: AppBar(
@@ -206,52 +222,8 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(22),
                 children: [
-                  const Center(
-                    child: Text(
-                      '刚刚',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  if (!_voiceArrived) const Text('对方正在输入…'),
-                  if (_voiceArrived)
-                    _bubble(
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('给你留了一段语音，听听看。'),
-                          const SizedBox(height: 10),
-                          FilledButton.icon(
-                            onPressed: _loading ? null : _playVoice,
-                            icon: Icon(
-                              _playing && _voiceIndex == 0
-                                  ? Icons.pause
-                                  : Icons.play_arrow,
-                            ),
-                            label: Text(
-                              _loading
-                                  ? '正在加载…'
-                                  : _playing && _voiceIndex == 0
-                                  ? '暂停语音'
-                                  : '播放语音',
-                            ),
-                          ),
-                          if (_audioError != null) ...[
-                            Text(
-                              _audioError!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            TextButton(
-                              onPressed: () =>
-                                  setState(() => _photoArrived = true),
-                              child: const Text('先查看地点线索'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  if (_photoArrived) ...[
-                    _bubble(const Text('去照片里的地方看看。\n接下来，线索藏在现实世界里。')),
+                  if (_voiceArrived) _voiceMessage(0),
+                  if (_photoArrived)
                     _bubble(
                       GestureDetector(
                         onTap: () => showDialog<void>(
@@ -261,21 +233,7 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
                         child: _locationPhoto(),
                       ),
                     ),
-                    _bubble(
-                      FilledButton.icon(
-                        onPressed: _loading ? null : () => _playVoice(1),
-                        icon: Icon(
-                          _playing && _voiceIndex == 1
-                              ? Icons.pause
-                              : Icons.play_arrow,
-                        ),
-                        label: Text(
-                          _playing && _voiceIndex == 1 ? '暂停语音' : '播放第二段语音',
-                        ),
-                      ),
-                    ),
-                    _bubble(const Text('找到最后的二维码后，回到这里。\n点击发送旁的 ＋，打开相机扫描。')),
-                  ],
+                  if (_secondVoiceArrived) _voiceMessage(1),
                 ],
               ),
             ),
@@ -291,10 +249,7 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
                       ),
                       child: Padding(
                         padding: EdgeInsets.all(14),
-                        child: Text(
-                          '跟着线索去寻找吧…',
-                          style: TextStyle(color: Colors.grey),
-                        ),
+                        child: SizedBox(height: 20),
                       ),
                     ),
                   ),
@@ -313,21 +268,47 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen> {
     );
   }
 
+  Widget _voiceMessage(int index) => _bubble(
+    SizedBox(
+      width: 180,
+      child: InkWell(
+        key: ValueKey('hunt-voice-$index'),
+        borderRadius: BorderRadius.circular(12),
+        onTap: _loading ? null : () => _playVoice(index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              if (_loading && _voiceIndex == index)
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  _audioError != null && _voiceIndex == index
+                      ? Icons.refresh
+                      : _playing && _voiceIndex == index
+                      ? Icons.pause
+                      : Icons.play_arrow,
+                ),
+              const SizedBox(width: 16),
+              const Expanded(child: Icon(Icons.graphic_eq, size: 36)),
+              const Icon(Icons.volume_up_outlined, size: 20),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
   Widget _locationPhoto() => Image.asset(
     TreasureHuntConfig.locationPhoto,
     fit: BoxFit.contain,
     errorBuilder: (_, _, _) => const SizedBox(
       height: 180,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.photo_outlined, size: 48),
-            SizedBox(height: 12),
-            Text('地点照片尚未放入'),
-          ],
-        ),
-      ),
+      child: Center(child: Icon(Icons.photo_outlined, size: 48)),
     ),
   );
 }

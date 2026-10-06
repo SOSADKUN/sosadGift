@@ -94,12 +94,14 @@ class _AppFlowState extends State<AppFlow> {
   @override
   Widget build(BuildContext context) {
     final enteringHub = kFlowOrder[_index] == FlowStep.gameHub;
+    final enteringOpening = kFlowOrder[_index] == FlowStep.doorOpening;
+    final enteringHunt = kFlowOrder[_index] == FlowStep.treasureHunt;
     final enteringDoor = kFlowOrder[_index] == FlowStep.fourKeyDoor;
     final enteringDiary = kFlowOrder[_index] == FlowStep.storyRecap;
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedSwitcher(
       duration: Duration(
-        milliseconds: enteringDoor
+        milliseconds: enteringDoor || enteringOpening || enteringHunt
             ? 0
             : reducedMotion
             ? 200

@@ -1,61 +1,15 @@
 import 'dart:async';
+import '../../../games/game_timer.dart';
+import 'package:flame/game.dart';
+import '../../../games/maze_game.dart';
+import '../../../games/maze_layouts.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
+import '../../widgets/maze_joystick.dart';
 import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
-
-// '#' wall, '.' path, 'S' start, 'G' goal. Every variant shares the same
-// size and the same S/G corners, so swapping layouts mid-game never strands
-// the player or the goal on a wall.
-const _mazeVariants = [
-  [
-    '###############',
-    '#S....#.......#',
-    '#####.#.#.###.#',
-    '#.....#.#...#.#',
-    '#.#####.###.###',
-    '#.#.......#...#',
-    '#.###.#####.#.#',
-    '#...#.#...#.#.#',
-    '###.###.#.###.#',
-    '#.#.#...#...#.#',
-    '#.#.#.#####.#.#',
-    '#.....#......G#',
-    '###############',
-  ],
-  [
-    '###############',
-    '#S#...#.#.....#',
-    '#.#.#.#.#.###.#',
-    '#...#.#.....#.#',
-    '#####.#.#####.#',
-    '#...#.#.#.#...#',
-    '#.###.#.#.#.#.#',
-    '#.#...#...#.#.#',
-    '#.#.#######.#.#',
-    '#.#.#.......#.#',
-    '#.#.###.#####.#',
-    '#.......#....G#',
-    '###############',
-  ],
-  [
-    '###############',
-    '#S..#.......#.#',
-    '###.#.###.#.#.#',
-    '#.#.#...#.#...#',
-    '#.#.#####.#####',
-    '#...#...#.....#',
-    '#.###.#.#.###.#',
-    '#.#...#.#.#...#',
-    '#.#.###.###.#.#',
-    '#...#.#.#...#.#',
-    '#####.#.#.###.#',
-    '#.........#..G#',
-    '###############',
-  ],
-];
 
 class _Point {
   final int row;
@@ -85,17 +39,20 @@ class GameThreeScreen extends StatefulWidget {
   State<GameThreeScreen> createState() => _GameThreeScreenState();
 }
 
-class _GameThreeScreenState extends State<GameThreeScreen> {
+class _GameThreeScreenState extends State<GameThreeScreen>
+    with WidgetsBindingObserver {
   static const _timeLimit = 90;
-  static const _playerAsset = 'assets/photos/game3_move.gif';
-  static const _goalAsset = 'assets/photos/game3_1.gif';
   static const _successAsset = 'assets/photos/game3_success.gif';
 
+  late final MazeGame _field;
+  Timer? _holdTimer;
+  bool _paused = false;
+  bool _fieldReady = false;
   final _rnd = Random();
-  late final int _rows = _mazeVariants.first.length;
-  late final int _cols = _mazeVariants.first[0].length;
-  late final _Point _start = _findChar(_mazeVariants.first, 'S');
-  late final _Point _goal = _findChar(_mazeVariants.first, 'G');
+  late final int _rows = kMazeVariants.first.length;
+  late final int _cols = kMazeVariants.first[0].length;
+  late final _Point _start = _findChar(kMazeVariants.first, 'S');
+  late final _Point _goal = _findChar(kMazeVariants.first, 'G');
   late List<String> _mazeRows;
 
   int _playerRow = 0;
@@ -110,6 +67,8 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   Timer? _cameraTimer;
   bool _cameraTour = false;
   bool _lookAtStart = false;
+  bool _lookAtGoal = false;
+  Offset _stickDirection = Offset.zero;
   bool _failed = false;
   String? _message;
   bool _finished = false;
@@ -127,7 +86,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
 
   /// A different maze layout than the one currently shown.
   List<String> _pickDifferentMaze() {
-    final others = _mazeVariants.where((m) => m != _mazeRows).toList();
+    final others = kMazeVariants.where((m) => m != _mazeRows).toList();
     return others[_rnd.nextInt(others.length)];
   }
 
@@ -136,26 +95,59 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
     return _mazeRows[row][col] == '#';
   }
 
+  Timer _delay(Duration duration, void Function() callback) =>
+      GameTimer(duration, callback, isPaused: () => _paused);
+  Timer _repeat(Duration duration, void Function(Timer) callback) =>
+      GameTimer.periodic(duration, callback, isPaused: () => _paused);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _paused = state != AppLifecycleState.resumed;
+    if (_paused) {
+      _holdTimer?.cancel();
+      _field.pauseEngine();
+    } else {
+      _field.resumeEngine();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _introDone = !widget.showIntro;
     _resetLevelState();
-    if (_introDone) _startClock();
+    _field = MazeGame(
+      rows: _mazeRows,
+      player: Offset(_playerCol.toDouble(), _playerRow.toDouble()),
+      goal: Offset(_currentGoal.col.toDouble(), _currentGoal.row.toDouble()),
+      onReady: _onFieldReady,
+    );
   }
 
   void _onIntroStart() {
     setState(() => _introDone = true);
-    _startClock();
+    if (_fieldReady) _startOpeningTour();
+  }
+
+  void _onFieldReady() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _fieldReady = true;
+      if (_introDone) _startOpeningTour();
+    });
   }
 
   void _resetLevelState() {
+    _holdTimer?.cancel();
     _cameraTimer?.cancel();
     _messageTimer?.cancel();
     _cameraTour = false;
     _lookAtStart = false;
+    _lookAtGoal = false;
+    _stickDirection = Offset.zero;
     _failed = false;
-    _mazeRows = _mazeVariants.first;
+    _mazeRows = kMazeVariants.first;
     _playerRow = _start.row;
     _playerCol = _start.col;
     _facing = _Facing.left;
@@ -168,9 +160,32 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
     _claimed = false;
   }
 
+  void _startOpeningTour() {
+    _clock?.cancel();
+    _cameraTimer?.cancel();
+    setState(() {
+      _cameraTour = true;
+      _lookAtGoal = false;
+    });
+    _cameraTimer = _delay(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() => _lookAtGoal = true);
+      // 1.6 seconds of camera travel, then one second at the target.
+      _cameraTimer = _delay(const Duration(milliseconds: 2600), () {
+        if (!mounted) return;
+        setState(() => _lookAtGoal = false);
+        _cameraTimer = _delay(const Duration(milliseconds: 1800), () {
+          if (!mounted) return;
+          setState(() => _cameraTour = false);
+          _startClock();
+        });
+      });
+    });
+  }
+
   void _startClock() {
     _clock?.cancel();
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+    _clock = _repeat(const Duration(seconds: 1), (_) {
       if (_finished || _cameraTour) return;
       setState(() => _secondsLeft--);
       if (_secondsLeft <= 0) _fail();
@@ -191,7 +206,9 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   }
 
   void _move(int dRow, int dCol) {
-    if (_finished || _cameraTour) return;
+    if (!_fieldReady || _paused || _finished || _cameraTour || _field.moving) {
+      return;
+    }
     final newRow = _playerRow + dRow;
     final newCol = _playerCol + dCol;
     final facing = _facingFor(dRow, dCol);
@@ -205,6 +222,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
       _playerCol = newCol;
       _facing = facing;
     });
+    _syncField();
     if (_playerRow == _currentGoal.row && _playerCol == _currentGoal.col) {
       _levelClear();
       return;
@@ -215,6 +233,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   }
 
   void _fleeGoal() {
+    _holdTimer?.cancel();
     HapticFeedback.heavyImpact();
     _messageTimer?.cancel();
     setState(() {
@@ -229,17 +248,18 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
       _message = '它跑回起点啦！跟着镜头看看～';
       _cameraTour = true;
     });
+    _syncField();
     // Allow the player relocation to settle before the guided camera tour.
-    _cameraTimer = Timer(const Duration(milliseconds: 200), () {
+    _cameraTimer = _delay(const Duration(milliseconds: 200), () {
       if (!mounted || _finished) return;
       setState(() => _lookAtStart = true);
-      _cameraTimer = Timer(const Duration(milliseconds: 2200), () {
+      _cameraTimer = _delay(const Duration(milliseconds: 2600), () {
         if (!mounted || _finished) return;
         setState(() {
           _lookAtStart = false;
           _message = '回到你这里，出发追回它吧！';
         });
-        _cameraTimer = Timer(const Duration(milliseconds: 1400), () {
+        _cameraTimer = _delay(const Duration(milliseconds: 1800), () {
           if (!mounted || _finished) return;
           setState(() {
             _cameraTour = false;
@@ -251,6 +271,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   }
 
   void _fail() {
+    _holdTimer?.cancel();
     _clock?.cancel();
     _cameraTimer?.cancel();
     _messageTimer?.cancel();
@@ -262,6 +283,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
   }
 
   void _levelClear() {
+    _holdTimer?.cancel();
     _finished = true;
     _won = true;
     _clock?.cancel();
@@ -271,71 +293,49 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
 
   @override
   void dispose() {
+    _holdTimer?.cancel();
     _clock?.cancel();
     _messageTimer?.cancel();
     _cameraTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Widget _arrowButton(IconData icon, int dRow, int dCol) {
-    return GestureDetector(
-      onTap: () => _move(dRow, dCol),
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.25),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white38),
-        ),
-        child: Icon(icon, color: Colors.white, size: 26),
-      ),
-    );
+  void _onJoystick(Offset direction) {
+    _holdTimer?.cancel();
+    _stickDirection = direction;
+    if (direction == Offset.zero || _cameraTour || _finished || _paused) return;
+    void move() =>
+        _move(_stickDirection.dy.toInt(), _stickDirection.dx.toInt());
+    move();
+    _holdTimer = _repeat(const Duration(milliseconds: 170), (_) => move());
   }
 
-  /// The sprite's artwork faces left by default, so right needs a
-  /// horizontal flip, and up/down are faked with a 90° rotation.
-  Widget _playerSprite(double cell) {
-    double angle;
-    bool flip;
-    switch (_facing) {
-      case _Facing.left:
-        angle = 0;
-        flip = false;
-        break;
-      case _Facing.right:
-        angle = 0;
-        flip = true;
-        break;
-      case _Facing.up:
-        angle = pi / 2;
-        flip = false;
-        break;
-      case _Facing.down:
-        angle = -pi / 2;
-        flip = false;
-        break;
-    }
-    return Padding(
-      padding: EdgeInsets.all(cell * 0.1),
-      child: AnimatedRotation(
-        turns: angle / (2 * pi),
-        duration: const Duration(milliseconds: 160),
-        child: Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.diagonal3Values(flip ? -1.0 : 1.0, 1.0, 1.0),
-          child: Image.asset(
-            _playerAsset,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-          ),
-        ),
-      ),
+  void _syncField() {
+    _field.setScene(
+      rows: _mazeRows,
+      player: Offset(_playerCol.toDouble(), _playerRow.toDouble()),
+      goal: Offset(_currentGoal.col.toDouble(), _currentGoal.row.toDouble()),
     );
+    _field.cameraTour = _cameraTour;
+    _field.lookAtStart = _lookAtStart;
+    _field.lookAtGoal = _lookAtGoal;
+    _field.facingCol = _facing == _Facing.right
+        ? 1
+        : _facing == _Facing.left
+        ? -1
+        : 0;
+    _field.facingRow = _facing == _Facing.down
+        ? 1
+        : _facing == _Facing.up
+        ? -1
+        : 0;
   }
 
   @override
   Widget build(BuildContext context) {
+    _syncField();
+    _field.reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Stack(
       children: [
         GameBackground(
@@ -365,136 +365,33 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 6),
+              const Text(
+                '推动摇杆移动 · 松手停下',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
               const SizedBox(height: 8),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: LayoutBuilder(
-                      builder: (context, box) {
-                        // Keep the full maze intact, but show a readable window
-                        // of about seven columns rather than shrinking all 15.
-                        final cell = max(box.maxWidth / 7, box.maxHeight / 9);
-                        final worldWidth = _cols * cell;
-                        final worldHeight = _rows * cell;
-                        final camera = Offset(
-                          (((_lookAtStart ? _start.col : _playerCol) + 0.5) *
-                                      cell -
-                                  box.maxWidth / 2)
-                              .clamp(0.0, max(0.0, worldWidth - box.maxWidth)),
-                          (((_lookAtStart ? _start.row : _playerRow) + 0.5) *
-                                      cell -
-                                  box.maxHeight / 2)
-                              .clamp(
-                                0.0,
-                                max(0.0, worldHeight - box.maxHeight),
-                              ),
-                        );
-                        final duration = MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 140);
-                        return ColoredBox(
-                          color: Colors.white,
-                          child: TweenAnimationBuilder<Offset>(
-                            tween: Tween<Offset>(begin: camera, end: camera),
-                            duration:
-                                _cameraTour &&
-                                    !MediaQuery.disableAnimationsOf(context)
-                                ? const Duration(milliseconds: 1300)
-                                : duration,
-                            curve: _cameraTour
-                                ? Curves.easeInOutCubic
-                                : Curves.easeOut,
-                            builder: (context, offset, maze) => Stack(
-                              clipBehavior: Clip.hardEdge,
-                              children: [
-                                Positioned(
-                                  left: -offset.dx,
-                                  top: -offset.dy,
-                                  width: worldWidth,
-                                  height: worldHeight,
-                                  child: maze!,
-                                ),
-                              ],
-                            ),
-                            child: Stack(
-                              children: [
-                                for (int r = 0; r < _rows; r++)
-                                  for (int c = 0; c < _cols; c++)
-                                    if (_mazeRows[r][c] == '#')
-                                      Positioned(
-                                        left: c * cell,
-                                        top: r * cell,
-                                        width: cell,
-                                        height: cell,
-                                        child: Container(
-                                          margin: const EdgeInsets.all(1),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF8D6748),
-                                            borderRadius: BorderRadius.circular(
-                                              3,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                AnimatedPositioned(
-                                  duration: duration,
-                                  curve: Curves.easeOut,
-                                  left: _currentGoal.col * cell,
-                                  top: _currentGoal.row * cell,
-                                  width: cell,
-                                  height: cell,
-                                  child: Padding(
-                                    padding: EdgeInsets.all(cell * 0.1),
-                                    child: Image.asset(
-                                      _goalAsset,
-                                      fit: BoxFit.contain,
-                                      gaplessPlayback: true,
-                                    ),
-                                  ),
-                                ),
-                                AnimatedPositioned(
-                                  duration: duration,
-                                  curve: Curves.easeOut,
-                                  left: _playerCol * cell,
-                                  top: _playerRow * cell,
-                                  width: cell,
-                                  height: cell,
-                                  child: _playerSprite(cell),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+                    child: GameWidget(
+                      game: _field,
+                      loadingBuilder: (_) => const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFFBBD0),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 20, top: 4),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _arrowButton(Icons.keyboard_arrow_up, -1, 0),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 44),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 300),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _arrowButton(Icons.keyboard_arrow_left, 0, -1),
-                            _arrowButton(Icons.keyboard_arrow_right, 0, 1),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _arrowButton(Icons.keyboard_arrow_down, 1, 0),
-                  ],
+                padding: const EdgeInsets.only(bottom: 16, top: 8),
+                child: MazeJoystick(
+                  enabled: _introDone && !_cameraTour && !_finished && !_paused,
+                  onChanged: _onJoystick,
                 ),
               ),
             ],
@@ -557,7 +454,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
             title: '时间到啦！',
             onRetry: () {
               setState(_resetLevelState);
-              _startClock();
+              _startOpeningTour();
             },
             onExit: widget.onLose,
           ),
@@ -565,7 +462,7 @@ class _GameThreeScreenState extends State<GameThreeScreen> {
           GameIntroOverlay(
             title: '迷宫大冒险',
             instructionText:
-                '用下方的箭头带小鸡走出迷宫\n快到爱心时它会跑回起点，迷宫也会变新哦，别灰心追上去～\n时间限制 $_timeLimit 秒，加油哦～',
+                '推动下方摇杆带小鸡走出迷宫～\n时间限制 $_timeLimit 秒，加油哦～',
             onStart: _onIntroStart,
           ),
       ],

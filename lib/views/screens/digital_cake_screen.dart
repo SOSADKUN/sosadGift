@@ -8,10 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// Birthday cake with instrumental music and tap or microphone candle control.
+/// A dreamlike cake reveal; only the end of the birthday song advances it.
 class DigitalCakeScreen extends StatefulWidget {
-  const DigitalCakeScreen({super.key, this.onComplete});
+  const DigitalCakeScreen({super.key, this.onComplete, this.birthdayPlayer});
   final VoidCallback? onComplete;
+
+  /// Optional player for testing audio completion independently of native audio.
+  final AudioPlayer? birthdayPlayer;
 
   @override
   State<DigitalCakeScreen> createState() => _DigitalCakeScreenState();
@@ -19,14 +22,16 @@ class DigitalCakeScreen extends StatefulWidget {
 
 class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     with TickerProviderStateMixin {
-  final _birthdayPlayer = AudioPlayer();
-  Timer? _finaleTimer;
+  late final _birthdayPlayer = widget.birthdayPlayer ?? AudioPlayer();
+  bool _completed = false;
+  bool _musicError = false;
   StreamSubscription<void>? _birthdayComplete;
   bool _songFinished = false;
   bool _blownOut = false;
   bool _micActive = false;
 
-  final AudioRecorder _recorder = AudioRecorder();
+  AudioRecorder? _recorder;
+  Timer? _introTimer;
   StreamSubscription<Uint8List>? _audioSub;
 
   // dBFS (decibels relative to full scale) — negative values, 0 is loudest
@@ -69,7 +74,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     _flyController =
         AnimationController(
           vsync: this,
-          duration: const Duration(milliseconds: 1400),
+          duration: const Duration(milliseconds: 4200),
         )..addStatusListener((status) {
           if (status == AnimationStatus.completed) {
             _crossfadeController.forward();
@@ -78,13 +83,13 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
 
     _crossfadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 1600),
     );
 
-    _digits = List.generate(40, (i) => _DigitParticle(seed: i));
+    _digits = List.generate(100, (i) => _DigitParticle(seed: i));
 
     // Brief black screen before the digits start flying in.
-    Future.delayed(const Duration(milliseconds: 400), () {
+    _introTimer = Timer(const Duration(milliseconds: 400), () {
       if (mounted) _flyController.forward();
     });
 
@@ -93,10 +98,10 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
       _scheduleFinale();
     });
     _playBirthdaySong();
-    _initMic();
   }
 
   Future<void> _playBirthdaySong() async {
+    if (mounted) setState(() => _musicError = false);
     try {
       await _birthdayPlayer.setReleaseMode(ReleaseMode.release);
       if (!mounted) return;
@@ -106,18 +111,18 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
       );
     } catch (error) {
       debugPrint('Birthday music unavailable: $error');
-      _songFinished = true;
-      _scheduleFinale();
+      if (mounted) setState(() => _musicError = true);
     }
   }
 
   Future<void> _initMic() async {
     final status = await Permission.microphone.request();
-    if (!status.isGranted) return;
+    if (!mounted || !status.isGranted || _blownOut) return;
 
     try {
-      if (!await _recorder.hasPermission()) return;
-      final stream = await _recorder.startStream(
+      final recorder = _recorder ??= AudioRecorder();
+      if (!await recorder.hasPermission() || !mounted) return;
+      final stream = await recorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
           sampleRate: 16000,
@@ -162,26 +167,19 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     _flameController.stop();
     _blowController.forward(from: 0);
     _audioSub?.cancel();
-    _recorder.stop();
+    _recorder?.stop();
     _scheduleFinale();
   }
 
   void _scheduleFinale() {
-    if (!mounted ||
-        !_blownOut ||
-        !_songFinished ||
-        widget.onComplete == null ||
-        _finaleTimer != null) {
-      return;
-    }
-    _finaleTimer = Timer(const Duration(seconds: 6), () {
-      if (mounted) widget.onComplete?.call();
-    });
+    if (!mounted || !_songFinished || _completed) return;
+    _completed = true;
+    widget.onComplete?.call();
   }
 
   @override
   void dispose() {
-    _finaleTimer?.cancel();
+    _introTimer?.cancel();
     _birthdayComplete?.cancel();
     _birthdayPlayer.dispose();
     _flameController.dispose();
@@ -190,68 +188,131 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     _flyController.dispose();
     _crossfadeController.dispose();
     _audioSub?.cancel();
-    _recorder.dispose();
+    _recorder?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Cake scene fades in as the digits converge and dissolve.
-        AnimatedBuilder(
-          animation: _crossfadeController,
-          builder: (context, child) => Opacity(
-            opacity: _crossfadeController.value,
-            child: IgnorePointer(
-              ignoring: _crossfadeController.value < 1,
-              child: child,
+    return Scaffold(
+      backgroundColor: const Color(0xFF191329),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0, -.15),
+                radius: 1.1,
+                colors: [
+                  Color(0xFF594061),
+                  Color(0xFF2B203D),
+                  Color(0xFF120F20),
+                ],
+                stops: [0, .5, 1],
+              ),
             ),
           ),
-          child: _buildCakeScene(),
-        ),
-
-        // Digits flying in from off-screen, converging to the center, then
-        // dissolving away to reveal the cake underneath.
-        AnimatedBuilder(
-          animation: Listenable.merge([_flyController, _crossfadeController]),
-          builder: (context, _) {
-            final introOpacity = 1 - _crossfadeController.value;
-            if (introOpacity <= 0) return const SizedBox.shrink();
-            final flashOpacity = _crossfadeController.value < 0.3
-                ? (1 - _crossfadeController.value / 0.3) * 0.6
-                : 0.0;
-            return Opacity(
-              opacity: introOpacity,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final size = Size(
-                    constraints.maxWidth,
-                    constraints.maxHeight,
-                  );
-                  return Stack(
-                    children: [
-                      for (final d in _digits)
-                        _buildDigit(d, size, _flyController.value),
-                      Center(
-                        child: Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha: flashOpacity),
-                          ),
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (_, _) =>
+                CustomPaint(painter: _DreamSkyPainter(_glowController.value)),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                children: [
+                  const Text(
+                    'A LITTLE MAGIC, JUST FOR YOU',
+                    style: TextStyle(
+                      color: Color(0xFFD9BDD0),
+                      fontSize: 9,
+                      letterSpacing: 3,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Happy Birthday',
+                    style: TextStyle(
+                      color: Color(0xFFFFF0E2),
+                      fontSize: 34,
+                      fontFamily: 'serif',
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w300,
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 340,
+                          height: 420,
+                          child: _buildCakeScene(),
                         ),
                       ),
-                    ],
-                  );
-                },
+                    ),
+                  ),
+                  AnimatedBuilder(
+                    animation: _crossfadeController,
+                    builder: (_, child) => Opacity(
+                      opacity: _crossfadeController.value,
+                      child: child,
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          _blownOut ? '愿你的每一年，都被温柔以待。' : '闭上眼睛，许一个愿。',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFFF7E5DF),
+                            fontSize: 17,
+                            letterSpacing: 2,
+                            height: 1.7,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _blownOut ? '生日快乐，我会一直在。' : '轻点烛光，让心愿闪闪发亮',
+                          style: const TextStyle(
+                            color: Color(0xFFBBA3BE),
+                            fontSize: 11,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_musicError)
+                    TextButton.icon(
+                      onPressed: _playBirthdaySong,
+                      icon: const Icon(
+                        Icons.music_note,
+                        color: Color(0xFFECD2A4),
+                      ),
+                      label: const Text(
+                        '重新播放生日歌',
+                        style: TextStyle(color: Color(0xFFECD2A4)),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      tooltip: _micActive ? '可以对着麦克风吹熄蜡烛' : '开启吹蜡烛',
+                      onPressed: _micActive || _blownOut ? null : _initMic,
+                      icon: Icon(
+                        _micActive ? Icons.mic : Icons.mic_none,
+                        size: 18,
+                        color: const Color(0xFFBBA3BE),
+                      ),
+                    ),
+                ],
               ),
-            );
-          },
-        ),
-      ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -295,151 +356,78 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     );
   }
 
-  Widget _buildCakeScene() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Ambient candlelight glow behind the whole scene.
-        AnimatedBuilder(
-          animation: _glowController,
-          builder: (context, _) {
-            final t = _glowController.value;
-            final opacity = _blownOut ? 0.0 : 0.22 + t * 0.08;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              width: 260 + t * 30,
-              height: 260 + t * 30,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    Colors.orange.withValues(alpha: opacity),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 220,
-              height: 260,
+  Widget _buildCakeScene() => AnimatedBuilder(
+    animation: Listenable.merge([
+      _flyController,
+      _crossfadeController,
+      _flameController,
+      _blowController,
+    ]),
+    builder: (context, _) {
+      final reveal = Curves.easeInOutCubic.transform(
+        _crossfadeController.value,
+      );
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Opacity(
+            opacity: reveal,
+            child: Transform.translate(
+              offset: Offset(0, 18 * (1 - reveal)),
+              child: CustomPaint(painter: _CakePainter()),
+            ),
+          ),
+          if (reveal < 1)
+            Opacity(
+              opacity: 1 - reveal,
               child: Stack(
-                alignment: Alignment.center,
                 children: [
-                  // Smoke / confetti particle burst.
-                  AnimatedBuilder(
-                    animation: _blowController,
-                    builder: (context, _) => CustomPaint(
-                      size: const Size(220, 260),
-                      painter: _ParticlePainter(
-                        particles: _particles,
-                        progress: _blowController.value,
-                        active: _blownOut,
-                      ),
+                  for (final digit in _digits)
+                    _buildDigit(
+                      digit,
+                      const Size(340, 420),
+                      _flyController.value,
                     ),
-                  ),
-
-                  // The cake.
-                  const Positioned(bottom: 0, child: CustomPaintCakeWrapper()),
-
-                  // The candle flame — tap fallback always available.
-                  Positioned(
-                    top: 4,
-                    child: GestureDetector(
-                      onTap: _blowOutCandle,
-                      behavior: HitTestBehavior.translucent,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: AnimatedBuilder(
-                          animation: _flameController,
-                          builder: (context, _) {
-                            final flicker = 0.85 + _flameController.value * 0.3;
-                            return AnimatedOpacity(
-                              duration: const Duration(milliseconds: 400),
-                              opacity: _blownOut ? 0.0 : 1.0,
-                              child: Transform.scale(
-                                scale: _blownOut ? 1.0 : flicker,
-                                child: CustomPaint(
-                                  size: const Size(20, 34),
-                                  painter: _FlamePainter(),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 28),
-
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 600),
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SlideTransition(
-                  position: Tween(
-                    begin: const Offset(0, 0.15),
-                    end: Offset.zero,
-                  ).animate(anim),
-                  child: child,
+          Positioned(
+            top: 70,
+            left: 142,
+            width: 56,
+            height: 64,
+            child: GestureDetector(
+              key: const ValueKey('birthday-candle'),
+              onTap: reveal == 1 ? _blowOutCandle : null,
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 700),
+                opacity: _blownOut ? 0 : reveal,
+                child: Center(
+                  child: Transform.scale(
+                    scale: .9 + _flameController.value * .12,
+                    child: CustomPaint(
+                      size: const Size(18, 32),
+                      painter: _FlamePainter(),
+                    ),
+                  ),
                 ),
               ),
-              child: _blownOut
-                  ? const Padding(
-                      key: ValueKey('after'),
-                      padding: EdgeInsets.symmetric(horizontal: 32),
-                      child: Text(
-                        '今年、明年、未来的每一年，我也不会缺席。\n生日快乐 🎉',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          height: 1.6,
-                        ),
-                      ),
-                    )
-                  : Column(
-                      key: const ValueKey('before'),
-                      children: [
-                        const Text(
-                          '闭上眼睛，许个愿',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _micActive ? '然后对着屏幕吹一口气，吹熄蜡烛' : '然后点一下蜡烛，吹熄它吧',
-                          style: const TextStyle(
-                            color: Colors.white38,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
             ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// Small wrapper so the cake sits with a fixed footprint inside the Stack.
-class CustomPaintCakeWrapper extends StatelessWidget {
-  const CustomPaintCakeWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(180, 170), painter: _CakePainter());
-  }
+          ),
+          IgnorePointer(
+            child: CustomPaint(
+              painter: _ParticlePainter(
+                particles: _particles,
+                progress: _blowController.value,
+                active: _blownOut,
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -460,15 +448,25 @@ class _DigitParticle {
       startAngle = Random(seed + 1).nextDouble() * 2 * pi,
       startRadius = 1.0 + Random(seed + 2).nextDouble() * 0.6,
       targetJitter = Offset(
-        (Random(seed + 3).nextDouble() - 0.5) * 40,
-        (Random(seed + 4).nextDouble() - 0.5) * 40,
+        (Random(seed + 3).nextDouble() - 0.5) *
+            (seed % 3 == 0
+                ? 240
+                : seed % 3 == 1
+                ? 180
+                : 120),
+        (seed % 3 == 0
+                ? 80
+                : seed % 3 == 1
+                ? 15
+                : -45) +
+            Random(seed + 4).nextDouble() * 35,
       ),
       fontSize = 14 + Random(seed + 5).nextDouble() * 14,
       color = const [
-        Colors.pinkAccent,
-        Colors.white,
-        Color(0xFFB388FF),
-        Color(0xFF80D8FF),
+        Color(0xFFE5B6CE),
+        Color(0xFFFFF0DF),
+        Color(0xFFCAB8E6),
+        Color(0xFFECD2A4),
       ][seed % 4],
       delay = Random(seed + 6).nextDouble() * 0.35;
 }
@@ -488,11 +486,11 @@ class _Particle {
       speed = 40 + Random(seed + 1).nextDouble() * 70,
       size = 3 + Random(seed + 2).nextDouble() * 5,
       color = const [
-        Color(0xFFFFC107),
-        Color(0xFFFF4081),
-        Color(0xFF40C4FF),
-        Color(0xFFFFFFFF),
-        Color(0xFF69F0AE),
+        Color(0xFFECD2A4),
+        Color(0xFFE5B6CE),
+        Color(0xFFCAB8E6),
+        Color(0xFFFFF0DF),
+        Color(0xFFD9BDD0),
       ][seed % 5];
 }
 
@@ -511,7 +509,7 @@ class _ParticlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (!active || progress == 0) return;
 
-    final origin = Offset(size.width / 2, 46);
+    final origin = Offset(size.width / 2, 100);
     for (final p in particles) {
       final t = progress;
       final dx = cos(p.angle) * p.speed * t;
@@ -592,94 +590,229 @@ class _FlamePainter extends CustomPainter {
 class _CakePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // Plate shadow.
+    canvas.save();
+    canvas.scale(size.width / 340, size.height / 420);
+    final glow = Rect.fromLTWH(15, 75, 310, 310);
     canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(w / 2, h - 6),
-        width: w * 0.95,
-        height: 14,
-      ),
-      Paint()..color = Colors.black.withValues(alpha: 0.25),
+      glow,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Color(0x55F6BDCF), Color(0x00F6BDCF)],
+        ).createShader(glow),
     );
-
-    // Bottom tier.
-    final bottomRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, h * 0.55, w, h * 0.4),
-      const Radius.circular(10),
+    canvas.drawOval(
+      const Rect.fromLTWH(25, 348, 290, 42),
+      Paint()
+        ..color = const Color(0x554A2C59)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
-    canvas.drawRRect(
-      bottomRect,
+    final plate = const Rect.fromLTWH(28, 345, 284, 32);
+    canvas.drawOval(
+      plate,
       Paint()
         ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFF8BBD0), Color(0xFFEC407A)],
-        ).createShader(bottomRect.outerRect),
+          colors: [Color(0xFFF6E7D0), Color(0xFFB79379), Color(0xFFF6E7D0)],
+        ).createShader(plate),
     );
-
-    // Top tier.
-    final topRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.15, h * 0.28, w * 0.7, h * 0.32),
-      const Radius.circular(10),
+    canvas.drawOval(
+      const Rect.fromLTWH(36, 346, 268, 19),
+      Paint()..color = const Color(0xFFFFF1E5),
     );
-    canvas.drawRRect(
-      topRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFF3E0), Color(0xFFFFCC80)],
-        ).createShader(topRect.outerRect),
+    _tier(
+      canvas,
+      const Rect.fromLTWH(50, 265, 240, 86),
+      const Color(0xFFE2B6D2),
+      const Color(0xFF9E79AC),
     );
-
-    // Frosting drips along the top tier edge.
-    final dripPaint = Paint()..color = Colors.white;
-    for (int i = 0; i < 6; i++) {
-      final x = w * 0.2 + i * (w * 0.6 / 5);
-      canvas.drawCircle(Offset(x, h * 0.28), 6, dripPaint);
+    _tier(
+      canvas,
+      const Rect.fromLTWH(80, 201, 180, 72),
+      const Color(0xFFF4D8DF),
+      const Color(0xFFC28EA8),
+    );
+    _tier(
+      canvas,
+      const Rect.fromLTWH(110, 150, 120, 59),
+      const Color(0xFFFFEBDC),
+      const Color(0xFFD1AEBB),
+    );
+    for (final position in [
+      const Offset(78, 280),
+      const Offset(92, 291),
+      const Offset(250, 211),
+      const Offset(235, 220),
+      const Offset(121, 160),
+    ]) {
+      _rose(canvas, position);
     }
+    final candle = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(165, 117, 10, 38),
+      const Radius.circular(3),
+    );
+    canvas.drawRRect(
+      candle,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFFFFF7E9), Color(0xFFD6B386), Color(0xFFFFECD3)],
+        ).createShader(candle.outerRect),
+    );
+    canvas.drawLine(
+      const Offset(170, 112),
+      const Offset(170, 117),
+      Paint()
+        ..color = const Color(0xFF6D4F56)
+        ..strokeWidth = 1.5,
+    );
+    canvas.restore();
+  }
 
-    // Sprinkles scattered on the bottom tier.
-    final sprinkleColors = [
-      Colors.redAccent,
-      Colors.lightGreen,
-      Colors.lightBlue,
-      Colors.purpleAccent,
-    ];
-    final rnd = Random(7);
-    for (int i = 0; i < 18; i++) {
-      final dx = rnd.nextDouble() * w * 0.8 + w * 0.1;
-      final dy = h * 0.6 + rnd.nextDouble() * h * 0.3;
-      canvas.drawCircle(
-        Offset(dx, dy),
-        1.6,
-        Paint()..color = sprinkleColors[i % sprinkleColors.length],
+  void _tier(Canvas canvas, Rect rect, Color light, Color dark) {
+    final body = RRect.fromRectAndRadius(rect, const Radius.circular(14));
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [dark, light, light, dark],
+          stops: const [0, .3, .6, 1],
+        ).createShader(rect),
+    );
+    canvas.save();
+    canvas.clipRRect(body);
+    for (double x = rect.left + 8; x < rect.right; x += 10) {
+      canvas.drawLine(
+        Offset(x, rect.top + 15),
+        Offset(x, rect.bottom - 8),
+        Paint()
+          ..color = Colors.white.withValues(alpha: .12)
+          ..strokeWidth = 1,
       );
     }
-
-    // Candle.
-    final candleRect = Rect.fromLTWH(w / 2 - 5, h * 0.02, 10, h * 0.28);
-    canvas.drawRect(
-      candleRect,
+    final icing = Path()
+      ..moveTo(rect.left, rect.top + 6)
+      ..lineTo(rect.right, rect.top + 6)
+      ..lineTo(rect.right, rect.top + 16);
+    for (double x = rect.right; x > rect.left; x -= 20) {
+      icing.quadraticBezierTo(
+        x - 10,
+        rect.top + 38,
+        max(rect.left, x - 20),
+        rect.top + 16,
+      );
+    }
+    icing.close();
+    canvas.drawPath(icing, Paint()..color = const Color(0xFFFBECE5));
+    canvas.restore();
+    final top = Rect.fromLTWH(rect.left, rect.top - 8, rect.width, 24);
+    canvas.drawOval(
+      top,
       Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.white, Color(0xFFE0E0E0)],
-        ).createShader(candleRect),
+          colors: [Color(0xFFFFF5EA), Color(0xFFECD1DB)],
+        ).createShader(top),
     );
-    final stripePaint = Paint()..color = Colors.pinkAccent.withValues(alpha: 0.6);
-    for (double y = candleRect.top + 4; y < candleRect.bottom; y += 8) {
-      canvas.drawRect(
-        Rect.fromLTWH(candleRect.left, y, candleRect.width, 3),
-        stripePaint,
+    for (double x = rect.left + 6; x < rect.right - 4; x += 11) {
+      canvas.drawCircle(
+        Offset(x, rect.bottom - 5),
+        3,
+        Paint()..color = const Color(0xFFFFE8CE),
+      );
+      canvas.drawCircle(
+        Offset(x - .7, rect.bottom - 6),
+        .9,
+        Paint()..color = Colors.white,
+      );
+    }
+    canvas.drawLine(
+      Offset(rect.left + 8, rect.bottom - 13),
+      Offset(rect.right - 8, rect.bottom - 13),
+      Paint()
+        ..color = const Color(0x88E8C59C)
+        ..strokeWidth = 1,
+    );
+  }
+
+  void _rose(Canvas canvas, Offset center) {
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.drawOval(
+      const Rect.fromLTWH(-12, 0, 17, 6),
+      Paint()..color = const Color(0xFF9EAA9A),
+    );
+    for (int i = 0; i < 5; i++) {
+      final angle = i * 2 * pi / 5;
+      canvas.drawCircle(
+        Offset(cos(angle) * 4, sin(angle) * 4),
+        5.5,
+        Paint()..color = const Color(0xFFE9B3C8),
+      );
+    }
+    canvas.drawCircle(Offset.zero, 4, Paint()..color = const Color(0xFFBE809C));
+    canvas.drawArc(
+      const Rect.fromLTWH(-3, -3, 6, 6),
+      -.8,
+      4.5,
+      false,
+      Paint()
+        ..color = const Color(0xFFF6D2DB)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _CakePainter oldDelegate) => false;
+}
+
+class _DreamSkyPainter extends CustomPainter {
+  final double phase;
+  _DreamSkyPainter(this.phase);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final random = Random(17);
+    for (int i = 0; i < 70; i++) {
+      final position = Offset(
+        random.nextDouble() * size.width,
+        random.nextDouble() * size.height,
+      );
+      final radius = .6 + random.nextDouble() * 1.6;
+      final shimmer = .2 + .55 * (.5 + .5 * sin(phase * pi * 2 + i));
+      final paint = Paint()
+        ..color = const Color(0xFFF5DCD1).withValues(alpha: shimmer);
+      canvas.drawCircle(position, radius, paint);
+      if (i % 9 == 0) {
+        paint.strokeWidth = .6;
+        canvas.drawLine(
+          position - const Offset(0, 5),
+          position + const Offset(0, 5),
+          paint,
+        );
+        canvas.drawLine(
+          position - const Offset(5, 0),
+          position + const Offset(5, 0),
+          paint,
+        );
+      }
+    }
+    for (int i = 0; i < 8; i++) {
+      final position = Offset(
+        (.5 + .48 * sin(i * 2.3 + phase * .15)) * size.width,
+        (.5 + .46 * cos(i * 1.7 + phase * .12)) * size.height,
+      );
+      canvas.drawCircle(
+        position,
+        20 + i * 4.0,
+        Paint()
+          ..color = const Color(0xFFDFB5D9).withValues(alpha: .035)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CakePainter oldDelegate) => false;
+  bool shouldRepaint(covariant _DreamSkyPainter oldDelegate) =>
+      phase != oldDelegate.phase;
 }

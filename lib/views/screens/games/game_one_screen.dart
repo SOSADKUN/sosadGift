@@ -112,10 +112,11 @@ class _GameOneScreenState extends State<GameOneScreen>
 
   void _spawn() {
     if (!mounted || _finished) return;
-    final fast = _random.nextDouble() < 0.30;
+    final fast = _random.nextDouble() < 0.45;
     _game.showTarget(
       Offset(_random.nextDouble(), _random.nextDouble()),
       fast: fast,
+      difficulty: _count / _goal,
     );
     setState(() {
       _visible = true;
@@ -137,7 +138,10 @@ class _GameOneScreenState extends State<GameOneScreen>
     if (_count == _goal) {
       _finish(true);
     } else {
-      _respawn = Timer(const Duration(milliseconds: 100), _spawn);
+      _respawn = Timer(
+        Duration(milliseconds: 240 + _random.nextInt(180)),
+        _spawn,
+      );
     }
   }
 

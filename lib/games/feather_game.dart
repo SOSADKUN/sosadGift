@@ -22,7 +22,8 @@ class FeatherGame extends FlameGame {
   bool targetVisible = false;
   bool reducedMotion = false;
   double _phase = 0;
-  double _period = 1.6;
+  double _period = 1.2;
+  double _difficulty = 0;
   double _entrance = 0;
   double _feedback = 0;
   Offset _catchPosition = Offset.zero;
@@ -69,9 +70,11 @@ class FeatherGame extends FlameGame {
     onReady();
   }
 
-  void showTarget(Offset seed, {required bool fast}) {
+  void showTarget(Offset seed, {required bool fast, double difficulty = 0}) {
     _seed = seed;
-    _period = fast ? .9 : 1.6;
+    _difficulty = difficulty.clamp(0.0, 1.0);
+    _period = (fast ? .85 : 1.25) - _difficulty * .2;
+    _phase = _random.nextDouble() * pi * 2;
     _entrance = 0;
     targetVisible = true;
     _placeTarget();
@@ -125,13 +128,14 @@ class FeatherGame extends FlameGame {
   void _placeTarget() {
     final target = _feather;
     if (target == null || !hasLayout) return;
-    final side = min(112.0, min(size.x, size.y));
+    final side = min(92.0 - _difficulty * 12, min(size.x, size.y));
     target.size.setValues(side, side);
-    final x = .20 + _seed.dx * .60 + (reducedMotion ? 0 : sin(_phase) * .18);
-    final y = .16 + _seed.dy * .68 + (reducedMotion ? 0 : cos(_phase) * .14);
+    final x = .20 + _seed.dx * .60 + (reducedMotion ? 0 : sin(_phase) * .23);
+    final y =
+        .16 + _seed.dy * .68 + (reducedMotion ? 0 : cos(_phase * 1.3) * .18);
     target.position.setValues(
-      side / 2 + x * max(0, size.x - side),
-      side / 2 + y * max(0, size.y - side - 44),
+      side / 2 + x.clamp(0.0, 1.0) * max(0, size.x - side),
+      side / 2 + y.clamp(0.0, 1.0) * max(0, size.y - side - 44),
     );
   }
 

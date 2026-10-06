@@ -1,4 +1,7 @@
 import 'dart:async';
+import '../../../games/game_timer.dart';
+import 'package:flame/game.dart';
+import '../../../games/memory_pad_game.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,12 +42,16 @@ class GameTwoScreen extends StatefulWidget {
   State<GameTwoScreen> createState() => _GameTwoScreenState();
 }
 
-class _GameTwoScreenState extends State<GameTwoScreen> {
+class _GameTwoScreenState extends State<GameTwoScreen>
+    with WidgetsBindingObserver {
   static const _startLength = 3;
   static const _winLength = 7;
   static const _showDuration = Duration(milliseconds: 500);
   static const _gapDuration = Duration(milliseconds: 250);
 
+  late final MemoryPadGame _field;
+  bool _paused = false;
+  bool _fieldReady = false;
   final _rnd = Random();
   final List<int> _sequence = [];
   int _inputIndex = 0;
@@ -57,17 +64,45 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
   Timer? _padTimer;
   late bool _introDone;
   Timer? _playTimer;
+  Timer? _completionTimer;
+
+  Timer _delay(Duration duration, void Function() callback) =>
+      GameTimer(duration, callback, isPaused: () => _paused);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _paused = state != AppLifecycleState.resumed;
+    if (_paused) {
+      _field.pauseEngine();
+    } else {
+      _field.resumeEngine();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _field = MemoryPadGame(
+      spriteAssets: _pads.map((p) => p.asset).toList(),
+      colors: _pads.map((p) => p.color).toList(),
+      onTap: _tapPad,
+      onReady: _onFieldReady,
+    );
     _introDone = !widget.showIntro;
-    if (_introDone) _startLevel();
   }
 
   void _onIntroStart() {
     setState(() => _introDone = true);
-    _startLevel();
+    if (_fieldReady) _startLevel();
+  }
+
+  void _onFieldReady() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _fieldReady = true;
+      if (_introDone) _startLevel();
+    });
   }
 
   void _startLevel() {
@@ -101,11 +136,11 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
         return;
       }
       setState(() => _activePad = _sequence[step]);
-      _playTimer = Timer(_showDuration, () {
+      _playTimer = _delay(_showDuration, () {
         if (!mounted) return;
         setState(() => _activePad = -1);
         step++;
-        _playTimer = Timer(_gapDuration, showNext);
+        _playTimer = _delay(_gapDuration, showNext);
       });
     }
 
@@ -113,7 +148,7 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
   }
 
   void _tapPad(int index) {
-    if (_showingSequence || _finished) return;
+    if (!_fieldReady || _paused || _showingSequence || _finished) return;
     HapticFeedback.selectionClick();
     if (_sequence[_inputIndex] != index) {
       _fail();
@@ -121,7 +156,7 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
     }
     setState(() => _activePad = index);
     _padTimer?.cancel();
-    _padTimer = Timer(const Duration(milliseconds: 150), () {
+    _padTimer = _delay(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       setState(() => _activePad = -1);
     });
@@ -132,7 +167,7 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
       } else {
         setState(() => _sequence.add(_rnd.nextInt(_pads.length)));
         _showingSequence = true;
-        _nextRoundTimer = Timer(const Duration(milliseconds: 500), () {
+        _nextRoundTimer = _delay(const Duration(milliseconds: 500), () {
           if (mounted && !_finished) _playSequence();
         });
       }
@@ -154,21 +189,26 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
     _finished = true;
     HapticFeedback.mediumImpact();
     setState(() => _message = '获得一把钥匙！🔑');
-    Timer(const Duration(milliseconds: 1200), () {
+    _completionTimer = _delay(const Duration(milliseconds: 1200), () {
       if (mounted) widget.onComplete();
     });
   }
 
   @override
   void dispose() {
+    _completionTimer?.cancel();
     _playTimer?.cancel();
     _nextRoundTimer?.cancel();
     _padTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _field.activePad = _activePad;
+    _field.inputEnabled = _introDone && !_showingSequence && !_finished;
+    _field.reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Stack(
       children: [
         GameBackground(
@@ -191,7 +231,7 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '第 ${_sequence.length - _startLength + 1} 关 · 共 '
+                  '第 ${max(1, _sequence.length - _startLength + 1)} 关 · 共 '
                   '${_winLength - _startLength + 1} 关',
                   style: const TextStyle(color: Colors.white60, fontSize: 12),
                 ),
@@ -206,58 +246,18 @@ class _GameTwoScreenState extends State<GameTwoScreen> {
                     ),
                   ),
                 ],
-                const Spacer(),
-                GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 1.45,
-                  children: List.generate(_pads.length, (i) {
-                    final pad = _pads[i];
-                    final active = _activePad == i;
-                    return GestureDetector(
-                      onTap: () => _tapPad(i),
-                      child: AnimatedScale(
-                        scale: active ? 1.08 : 1.0,
-                        duration: const Duration(milliseconds: 120),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 120),
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2D223C),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: active
-                                  ? pad.color
-                                  : Colors.white.withValues(alpha: 0.3),
-                              width: active ? 3 : 1.5,
-                            ),
-                            boxShadow: active
-                                ? [
-                                    BoxShadow(
-                                      color: pad.color.withValues(alpha: 0.7),
-                                      blurRadius: 20,
-                                      spreadRadius: 2,
-                                    ),
-                                  ]
-                                : const [],
-                          ),
-                          child: AnimatedOpacity(
-                            opacity: active ? 1.0 : 0.55,
-                            duration: const Duration(milliseconds: 120),
-                            child: Image.asset(
-                              pad.asset,
-                              fit: BoxFit.contain,
-                              gaplessPlayback: true,
-                            ),
-                          ),
-                        ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: GameWidget(
+                    game: _field,
+                    loadingBuilder: (_) => const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFFBBD0),
                       ),
-                    );
-                  }),
+                    ),
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 18),
               ],
             ),
           ),

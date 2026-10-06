@@ -1,8 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flame/game.dart';
+import 'package:gift/games/maze_game.dart';
+import 'package:gift/games/maze_layouts.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gift/views/screens/games/game_three_screen.dart';
 import 'package:gift/views/widgets/game_failure_overlay.dart';
 import 'package:gift/views/widgets/explosion_overlay.dart';
+
+Offset stick(WidgetTester tester) =>
+    tester.getCenter(find.byKey(const ValueKey('maze-joystick')));
+
+Future<void> finishTour(WidgetTester tester) async {
+  for (var i = 0; i < 310; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
 
 void main() {
   testWidgets(
@@ -12,19 +24,28 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: GameThreeScreen(onComplete: () {}, onLose: () {}),
-        ),
-      );
+      late MazeGame game;
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: GameThreeScreen(onComplete: () {}, onLose: () {}),
+          ),
+        );
+        game = tester
+            .widget<GameWidget<MazeGame>>(find.byType(GameWidget<MazeGame>))
+            .game!;
+        await game.loaded;
+      });
+      await tester.pump();
+      await finishTour(tester);
       const arrows = {
-        'R': Icons.keyboard_arrow_right,
-        'L': Icons.keyboard_arrow_left,
-        'U': Icons.keyboard_arrow_up,
-        'D': Icons.keyboard_arrow_down,
+        'R': Offset(36, 0),
+        'L': Offset(-36, 0),
+        'U': Offset(0, -36),
+        'D': Offset(0, 36),
       };
-      for (final step in 'RRRRDDLLLLDDDDRRDDDDRRUURRUURRDDRRDDR'.split('')) {
-        await tester.tap(find.byIcon(arrows[step]!));
+      for (final step in pathToGoal(kMazeVariants.first)..removeLast()) {
+        await tester.tapAt(stick(tester) + arrows[step]!);
         await tester.pump(const Duration(milliseconds: 160));
       }
       expect(find.text('它跑回起点啦！跟着镜头看看～'), findsOneWidget);
@@ -32,21 +53,20 @@ void main() {
           .widgetList<Text>(find.byType(Text))
           .firstWhere((t) => t.data!.startsWith('⏱'))
           .data;
-      final camera = find.byWidgetPredicate(
-        (w) => w is TweenAnimationBuilder<Offset>,
-      );
-      Offset destination() =>
-          (tester.widget(camera) as TweenAnimationBuilder<Offset>).tween.end!;
       await tester.pump(const Duration(milliseconds: 220));
-      expect(destination(), Offset.zero);
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_left));
+      expect(game.lookAtStart, isTrue);
+      final playerBefore = game.playerPosition;
+      await tester.tapAt(stick(tester) + const Offset(-36, 0));
       await tester.pump(const Duration(milliseconds: 1400));
-      expect(destination(), Offset.zero);
-      await tester.pump(const Duration(milliseconds: 850));
-      expect(destination().dx, greaterThan(0));
-      await tester.pump(const Duration(milliseconds: 1450));
-      expect(find.text('回到你这里，出发追回它吧！'), findsNothing);
+      expect(game.lookAtStart, isTrue);
+      expect(game.playerPosition, playerBefore);
+      await tester.pump(const Duration(milliseconds: 1250));
+      expect(game.lookAtStart, isFalse);
       expect(find.text(clockBefore!), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1850));
+      expect(find.text('回到你这里，出发追回它吧！'), findsNothing);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text(clockBefore), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -109,4 +129,31 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+}
+
+List<String> pathToGoal(List<String> maze) {
+  final queue = <(int, int, List<String>)>[(1, 1, [])];
+  final visited = <(int, int)>{(1, 1)};
+  for (var cursor = 0; cursor < queue.length; cursor++) {
+    final (row, col, path) = queue[cursor];
+    if (maze[row][col] == 'G') return path;
+    for (final (dr, dc, step) in [
+      (0, 1, 'R'),
+      (1, 0, 'D'),
+      (0, -1, 'L'),
+      (-1, 0, 'U'),
+    ]) {
+      final r = row + dr, c = col + dc;
+      if (r < 0 ||
+          c < 0 ||
+          r >= maze.length ||
+          c >= maze[0].length ||
+          maze[r][c] == '#' ||
+          !visited.add((r, c))) {
+        continue;
+      }
+      queue.add((r, c, [...path, step]));
+    }
+  }
+  throw StateError('Maze goal is unreachable');
 }

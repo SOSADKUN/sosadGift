@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 
 /// Plays the journey from the game hub, then holds on the four-lock door.
@@ -32,6 +33,13 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     duration: const Duration(milliseconds: 850),
   );
   final Set<int> _inserted = {};
+  final _bling = AudioPlayer();
+  static const _holeColors = [
+    Color(0xFFFFA7D9),
+    Color(0xFF99DEFF),
+    Color(0xFFC6A6FF),
+    Color(0xFFFFDF89),
+  ];
   bool _videoReady = false;
   bool _videoFinished = false;
   bool _advancing = false;
@@ -80,6 +88,7 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     setState(() => _activeHole = index);
     await _keyAnimation.forward(from: 0);
     if (!mounted) return;
+    _playBling();
     setState(() {
       _inserted.add(index);
       _activeHole = null;
@@ -91,11 +100,18 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     }
   }
 
+  Future<void> _playBling() async {
+    try {
+      await _bling.play(AssetSource('audio/key_bling.wav'), volume: .8);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _video.removeListener(_checkVideoEnd);
     _video.dispose();
     _keyAnimation.dispose();
+    _bling.dispose().catchError((Object _) {});
     super.dispose();
   }
 
@@ -177,6 +193,7 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
 
   Widget _keyhole(int index) {
     final inserted = _inserted.contains(index);
+    final color = _holeColors[index];
     final animating = _activeHole == index;
     return Semantics(
       button: !inserted,
@@ -198,37 +215,57 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
                   Container(
                     width: 40,
                     height: 40,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          Colors.white,
+                          color,
+                          color.withValues(alpha: .2),
+                        ],
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Color(0xDDFFE28B),
-                          blurRadius: 22,
-                          spreadRadius: 5,
+                          color: color,
+                          blurRadius: 24,
+                          spreadRadius: 10,
+                        ),
+                        BoxShadow(
+                          color: color.withValues(alpha: .75),
+                          blurRadius: 65,
+                          spreadRadius: 25,
+                        ),
+                        const BoxShadow(
+                          color: Colors.white,
+                          blurRadius: 12,
+                          spreadRadius: 3,
                         ),
                       ],
                     ),
                   ),
-                if (inserted || animating)
+                if (animating)
                   Transform.translate(
                     offset: Offset(
                       animating ? 42 * (1 - progress) : 0,
                       animating ? 28 * (1 - progress) : 0,
                     ),
-                    child: Transform.rotate(
-                      angle: animating ? -0.8 * (1 - progress) : 0,
-                      child: Transform.scale(
-                        scale: animating ? 1.25 - 0.25 * progress : 1,
-                        child: Icon(
-                          Icons.vpn_key_rounded,
-                          color: const Color(0xFFFFDE7C),
-                          size: 32,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withValues(alpha: 0.8),
-                              blurRadius: 7,
-                            ),
-                          ],
+                    child: Opacity(
+                      opacity: 1 - progress,
+                      child: Transform.rotate(
+                        angle: animating ? -0.8 * (1 - progress) : 0,
+                        child: Transform.scale(
+                          scale: animating ? 1.25 - 0.25 * progress : 1,
+                          child: Icon(
+                            Icons.vpn_key_rounded,
+                            color: const Color(0xFFFFDE7C),
+                            size: 32,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withValues(alpha: 0.8),
+                                blurRadius: 7,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

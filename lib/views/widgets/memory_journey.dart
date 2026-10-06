@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/story_entry.dart';
+import 'story_video.dart';
 
 /// A reversible, finger-controlled journey through photographs and captions.
 class MemoryJourney extends StatefulWidget {
@@ -25,11 +26,11 @@ class _MemoryJourneyState extends State<MemoryJourney>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Ticker _ticker;
   Duration? _lastTick;
-  double _position = -.7;
+  double _position = 0;
   int _direction = 0;
   int? _pointer;
   bool _completed = false;
-  late List<({String year, StoryStep step})> _memories;
+  late List<({String year, String title, StoryStep? step})> _memories;
 
   static const _ink = Color(0xFF654E4C);
   static const _muted = Color(0xFFA0847C);
@@ -44,8 +45,11 @@ class _MemoryJourneyState extends State<MemoryJourney>
 
   void _readEntries() {
     _memories = [
-      for (final entry in widget.entries)
-        for (final step in entry.steps) (year: entry.year, step: step),
+      for (final entry in widget.entries) ...[
+        (year: entry.year, title: entry.title, step: null),
+        for (final step in entry.steps)
+          (year: entry.year, title: entry.title, step: step),
+      ],
     ];
   }
 
@@ -55,7 +59,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
     if (oldWidget.entries != widget.entries) {
       _stop();
       _readEntries();
-      _position = _position.clamp(-.7, _end);
+      _position = _position.clamp(0.0, _end);
     }
   }
 
@@ -68,7 +72,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
     _lastTick = elapsed;
     if (previous == null) return;
     final dt = math.min(.05, (elapsed - previous).inMicroseconds / 1000000);
-    final next = (_position + _direction * dt * .40).clamp(-.7, _end);
+    final next = (_position + _direction * dt * .40).clamp(0.0, _end);
     if (next == _position) {
       _stop();
     } else {
@@ -99,7 +103,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
     _stop();
     if (_memories.isEmpty) return;
     setState(
-      () => _position = (_current + direction).clamp(0, _end).toDouble(),
+      () => _position = (_current + direction).clamp(0.0, _end).toDouble(),
     );
   }
 
@@ -149,7 +153,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
                           ),
                           SizedBox(height: 6),
                           Text(
-                            '时光里的我们',
+                            '往年生日回忆',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w500,
@@ -242,9 +246,16 @@ class _MemoryJourneyState extends State<MemoryJourney>
                                 i--
                               )
                                 if (i - _position > -1 && i - _position < 3.5)
-                                  _photo(i, photoWidth, photoHeight, reduced),
+                                  if (_memories[_current].step != null &&
+                                      _memories[i].step != null &&
+                                      _memories[i].year ==
+                                          _memories[_current].year)
+                                    _photo(i, photoWidth, photoHeight, reduced),
                               if (_memories.isNotEmpty)
-                                _caption(box.maxHeight, photoHeight, reduced),
+                                if (_memories[_current].step == null)
+                                  _chapter(reduced)
+                                else
+                                  _caption(box.maxHeight, photoHeight, reduced),
                             ],
                           ),
                         ),
@@ -265,7 +276,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
                             _direction < 0
                                 ? '正在倒回时光…'
                                 : _direction > 0
-                                ? '慢慢靠近回忆…'
+                                ? '回忆中…'
                                 : '按住左侧倒回 · 按住右侧前行',
                             textAlign: TextAlign.center,
                             style: const TextStyle(fontSize: 11, color: _muted),
@@ -280,7 +291,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
                       child: LinearProgressIndicator(
                         value: _memories.isEmpty
                             ? 0
-                            : ((_position + .7) / (_end + .7)).clamp(0, 1),
+                            : (_position / math.max(1, _end)).clamp(0, 1),
                         minHeight: 2,
                         color: const Color(0xFFB88C85),
                         backgroundColor: const Color(0xFFE6D8D1),
@@ -320,6 +331,49 @@ class _MemoryJourneyState extends State<MemoryJourney>
     );
   }
 
+  Widget _chapter(bool reduced) {
+    final chapter = _memories[_current];
+    final distance = (_current - _position).abs();
+    return Center(
+      child: Opacity(
+        opacity: reduced ? 1 : (1 - distance / .65).clamp(0.0, 1.0),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: SingleChildScrollView(
+            child: Column(
+              key: ValueKey('story-chapter-${chapter.year}'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${chapter.year}年',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 18,
+                    letterSpacing: 4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(width: 36, height: 1, color: const Color(0xFFD5B9B6)),
+                const SizedBox(height: 20),
+                Text(
+                  chapter.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: 2,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _navigation(IconData icon, String label, int direction) => IconButton(
     tooltip: label,
     onPressed: () => _step(direction),
@@ -332,7 +386,8 @@ class _MemoryJourneyState extends State<MemoryJourney>
     final opacity = reduced
         ? (index == _current ? 1.0 : 0.0)
         : (distance < 0 ? 1 + distance : 1 - distance * .26).clamp(0.0, 1.0);
-    final image = _memories[index].step.imageAsset;
+    final image = _memories[index].step!.imageAsset;
+    final video = _memories[index].step!.videoAsset;
     return Center(
       child: ExcludeSemantics(
         child: Opacity(
@@ -351,8 +406,10 @@ class _MemoryJourneyState extends State<MemoryJourney>
                 child: RepaintBoundary(
                   child: Container(
                     key: ValueKey('memory-photo-$index'),
-                    width: width,
-                    height: height,
+                    constraints: BoxConstraints(
+                      maxWidth: width,
+                      maxHeight: height,
+                    ),
                     padding: const EdgeInsets.fromLTRB(9, 9, 9, 24),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFFDFA),
@@ -365,14 +422,27 @@ class _MemoryJourneyState extends State<MemoryJourney>
                         ),
                       ],
                     ),
-                    child: image == null
-                        ? _placeholder(index)
+                    child: video != null
+                        ? StoryVideo(
+                            key: ValueKey(video),
+                            asset: video,
+                            active: index == _current && _direction == 0,
+                          )
+                        : image == null
+                        ? SizedBox(
+                            width: width - 18,
+                            height: height - 33,
+                            child: _placeholder(index),
+                          )
                         : Image.asset(
                             image,
                             fit: BoxFit.contain,
                             gaplessPlayback: true,
-                            errorBuilder: (_, error, stack) =>
-                                _placeholder(index),
+                            errorBuilder: (_, error, stack) => SizedBox(
+                              width: width - 18,
+                              height: height - 33,
+                              child: _placeholder(index),
+                            ),
                           ),
                   ),
                 ),
@@ -438,7 +508,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  memory.step.sentence,
+                  memory.step!.sentence,
                   key: const ValueKey('memory-caption'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(

@@ -44,7 +44,9 @@ void main() {
     expect(catches, 1);
     game.catchTarget();
     expect(catches, 1);
-    game.showTarget(const Offset(.5, .5), fast: false);
+    final initialSize = feather.size.x;
+    game.showTarget(const Offset(.5, .5), fast: false, difficulty: 1);
+    expect(feather.size.x, lessThan(initialSize));
     game.pauseEngine();
     game.catchTarget();
     expect(catches, 1);

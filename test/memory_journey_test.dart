@@ -22,6 +22,47 @@ Future<void> advance(WidgetTester tester, int frames) async {
 }
 
 void main() {
+  testWidgets(
+    'year titles separate each chapter and reverse navigation restores them',
+    (tester) async {
+      const chapters = [
+        StoryEntry(
+          year: '2022',
+          title: '原神开端',
+          steps: [StoryStep(sentence: 'First photo')],
+        ),
+        StoryEntry(
+          year: '2023',
+          title: '香水味～',
+          steps: [StoryStep(sentence: 'Second photo')],
+        ),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryJourney(entries: chapters, onComplete: () {}),
+        ),
+      );
+      expect(find.text('2022年'), findsOneWidget);
+      expect(find.text('原神开端'), findsOneWidget);
+      expect(find.byKey(const ValueKey('memory-photo-1')), findsNothing);
+      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.pump();
+      expect(find.text('First photo'), findsOneWidget);
+      expect(find.text('2022年'), findsNothing);
+      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.pump();
+      expect(find.text('2023年'), findsOneWidget);
+      expect(find.text('香水味～'), findsOneWidget);
+      expect(find.byKey(const ValueKey('memory-photo-3')), findsNothing);
+      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.pump();
+      expect(find.text('Second photo'), findsOneWidget);
+      await tester.tap(find.byTooltip('上一段回忆'));
+      await tester.pump();
+      expect(find.text('2023年'), findsOneWidget);
+    },
+  );
+
   testWidgets('hold advances, release stops, and left hold reverses', (
     tester,
   ) async {
@@ -34,15 +75,15 @@ void main() {
     var gesture = await tester.startGesture(
       Offset(area.right - 10, area.center.dy),
     );
-    await advance(tester, 95);
-    expect(find.text('02 / 03'), findsOneWidget);
+    await advance(tester, 125);
+    expect(find.text('03 / 04'), findsOneWidget);
     await gesture.up();
     await advance(tester, 60);
-    expect(find.text('02 / 03'), findsOneWidget);
+    expect(find.text('03 / 04'), findsOneWidget);
     gesture = await tester.startGesture(Offset(area.left + 10, area.center.dy));
     await advance(tester, 95);
     await gesture.up();
-    expect(find.text('01 / 03'), findsOneWidget);
+    expect(find.text('01 / 04'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -55,12 +96,12 @@ void main() {
       ),
     );
     await tester.tap(find.byTooltip('上一段回忆'));
-    expect(find.text('01 / 03'), findsOneWidget);
+    expect(find.text('01 / 04'), findsOneWidget);
     for (var i = 0; i < 5; i++) {
       await tester.tap(find.byTooltip('下一段回忆'));
       await tester.pump();
     }
-    expect(find.text('03 / 03'), findsOneWidget);
+    expect(find.text('04 / 04'), findsOneWidget);
     final area = tester.getRect(find.byKey(const ValueKey('memory-hold-area')));
     final gesture = await tester.startGesture(
       Offset(area.left + 10, area.center.dy),
@@ -98,7 +139,7 @@ void main() {
       );
       await tester.tap(find.byTooltip('下一段回忆'));
       await tester.pump();
-      expect(find.text('Another day together.'), findsOneWidget);
+      expect(find.text('Our first little memory.'), findsOneWidget);
       await tester.tap(find.text('下一页  ↗'));
       await tester.tap(find.text('下一页  ↗'));
       expect(completions, 1);

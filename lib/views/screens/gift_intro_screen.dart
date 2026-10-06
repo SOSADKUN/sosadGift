@@ -129,7 +129,7 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
                                   ),
                                   const SizedBox(height: 18),
                                   Text(
-                                    'Just Some Mini Game',
+                                    '游戏upgradee！！',
                                     style: GoogleFonts.cormorantGaramond(
                                       fontSize: 15,
                                       letterSpacing: 3.5,

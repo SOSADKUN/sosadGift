@@ -1,25 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 
-import '../widgets/video_player_widget.dart';
-
-/// Short opening intro between the unlocked door and the birthday cake.
+/// The whole door fills with light until the screen is entirely white.
 class DoorOpeningScreen extends StatefulWidget {
-  final VoidCallback onComplete;
-
   const DoorOpeningScreen({super.key, required this.onComplete});
-
+  final VoidCallback onComplete;
   @override
   State<DoorOpeningScreen> createState() => _DoorOpeningScreenState();
 }
 
 class _DoorOpeningScreenState extends State<DoorOpeningScreen>
     with SingleTickerProviderStateMixin {
-  // Set this to your opening video after adding it to pubspec.yaml.
-  static const String? _openingVideoAsset = null;
+  final _sound = AudioPlayer();
+
+  Future<void> _playOpeningSound() async {
+    try {
+      await _sound.play(AssetSource('audio/door_open.wav'), volume: .8);
+    } catch (_) {}
+  }
+
   late final AnimationController _controller =
       AnimationController(
         vsync: this,
-        duration: const Duration(milliseconds: 2600),
+        duration: const Duration(milliseconds: 5600),
+        animationBehavior: AnimationBehavior.preserve,
       )..addStatusListener((status) {
         if (status == AnimationStatus.completed) widget.onComplete();
       });
@@ -27,103 +31,64 @@ class _DoorOpeningScreenState extends State<DoorOpeningScreen>
   @override
   void initState() {
     super.initState();
-    if (_openingVideoAsset == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _controller.forward();
-      });
-    }
+    _controller.forward();
+    _playOpeningSound();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _sound.dispose().catchError((Object _) {});
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_openingVideoAsset != null) {
-      return VideoPlayerWidget(
-        assetPath: _openingVideoAsset!,
-        onComplete: widget.onComplete,
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF190F20),
-      body: AnimatedBuilder(
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.white,
+    body: LayoutBuilder(
+      builder: (context, box) => AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
           final opening = Curves.easeInOutCubic.transform(
-            ((_controller.value - 0.12) / 0.68).clamp(0.0, 1.0),
+            ((_controller.value - .04) / .8).clamp(0.0, 1.0),
           );
+          final white = Curves.easeInOut.transform(
+            ((_controller.value - .25) / .58).clamp(0.0, 1.0),
+          );
+          final reduced = MediaQuery.disableAnimationsOf(context);
           return Stack(
             fit: StackFit.expand,
             children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    colors: [
-                      const Color(0xFFFFE8B0),
-                      Color.lerp(
-                        const Color(0xFFA6647A),
-                        const Color(0xFFFFCBA0),
-                        opening,
-                      )!,
-                      const Color(0xFF301C34),
-                    ],
-                    radius: 0.9,
-                  ),
+              Transform.scale(
+                scale: reduced ? 1 : 1 + opening * .08,
+                child: Image.asset(
+                  'assets/photos/bigDoor.png',
+                  fit: BoxFit.cover,
                 ),
               ),
-              Center(
-                child: Opacity(
-                  opacity: 1 - opening,
-                  child: Transform.translate(
-                    offset: Offset(
-                      -MediaQuery.sizeOf(context).width * opening,
-                      0,
-                    ),
-                    child: Container(
-                      width: MediaQuery.sizeOf(context).width * 0.85,
-                      height: MediaQuery.sizeOf(context).height * 0.75,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(110),
-                          right: Radius.circular(12),
-                        ),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFAC765D), Color(0xFF5A3040)],
-                        ),
-                        border: Border.all(
-                          color: const Color(0xFFE9BC76),
-                          width: 5,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black54, blurRadius: 25),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.auto_awesome,
-                        color: Color(0xFFFFD996),
-                        size: 54,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Center(
+              IgnorePointer(
                 child: Opacity(
                   opacity: opening,
-                  child: const Text(
-                    '惊喜就在门后 ♡',
-                    style: TextStyle(
-                      color: Color(0xFF572E48),
-                      fontSize: 27,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 2,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        radius: 1.15,
+                        colors: [
+                          Colors.white,
+                          Color(0xDDFFF4DB),
+                          Color(0x00FFFFFF),
+                        ],
+                      ),
                     ),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                child: Opacity(
+                  opacity: white,
+                  child: const ColoredBox(
+                    key: ValueKey('door-whiteout'),
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -131,6 +96,6 @@ class _DoorOpeningScreenState extends State<DoorOpeningScreen>
           );
         },
       ),
-    );
-  }
+    ),
+  );
 }

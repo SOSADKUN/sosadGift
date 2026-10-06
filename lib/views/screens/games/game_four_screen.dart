@@ -1,4 +1,7 @@
 import 'dart:async';
+import '../../../games/game_timer.dart';
+import 'package:flame/game.dart';
+import '../../../games/mole_game.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,15 +45,19 @@ class GameFourScreen extends StatefulWidget {
   State<GameFourScreen> createState() => _GameFourScreenState();
 }
 
-class _GameFourScreenState extends State<GameFourScreen> {
+class _GameFourScreenState extends State<GameFourScreen>
+    with WidgetsBindingObserver {
   static const _holeCount = 9;
-  static const _goal = 15;
+  static const _goal = 30;
   static const _timeLimit = 30;
   static const _popDuration = Duration(milliseconds: 850);
   static const _spawnInterval = Duration(milliseconds: 650);
   static const _bombChance = 0.22;
   static const _boomDuration = Duration(milliseconds: 1200);
 
+  late final MoleGame _field;
+  bool _paused = false;
+  bool _fieldReady = false;
   final _rnd = Random();
   late List<_HoleItem?> _holes;
   late List<Timer?> _hideTimers;
@@ -68,18 +75,46 @@ class _GameFourScreenState extends State<GameFourScreen> {
   bool _claimed = false;
   late bool _introDone;
 
+  Timer _delay(Duration duration, void Function() callback) =>
+      GameTimer(duration, callback, isPaused: () => _paused);
+  Timer _repeat(Duration duration, void Function(Timer) callback) =>
+      GameTimer.periodic(duration, callback, isPaused: () => _paused);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _paused = state != AppLifecycleState.resumed;
+    if (_paused) {
+      _field.pauseEngine();
+    } else {
+      _field.resumeEngine();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _field = MoleGame(
+      spriteAssets: [..._clickableAssets, _bombAsset],
+      onTap: _tapHole,
+      onReady: _onFieldReady,
+    );
     _introDone = !widget.showIntro;
     _holes = List.filled(_holeCount, null);
     _hideTimers = List.filled(_holeCount, null);
-    if (_introDone) _startLevel();
   }
 
   void _onIntroStart() {
     setState(() => _introDone = true);
-    _startLevel();
+    if (_fieldReady) _startLevel();
+  }
+
+  void _onFieldReady() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _fieldReady = true;
+      if (_introDone) _startLevel();
+    });
   }
 
   void _startLevel() {
@@ -102,8 +137,8 @@ class _GameFourScreenState extends State<GameFourScreen> {
       _failedByBomb = false;
       _claimed = false;
     });
-    _spawnTimer = Timer.periodic(_spawnInterval, (_) => _spawn());
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+    _spawnTimer = _repeat(_spawnInterval, (_) => _spawn());
+    _clock = _repeat(const Duration(seconds: 1), (_) {
       if (_finished) return;
       setState(() => _secondsLeft--);
       if (_secondsLeft <= 0) _fail();
@@ -125,14 +160,14 @@ class _GameFourScreenState extends State<GameFourScreen> {
             _clickableAssets[_rnd.nextInt(_clickableAssets.length)],
           );
     setState(() => _holes[index] = item);
-    _hideTimers[index] = Timer(_popDuration, () {
+    _hideTimers[index] = _delay(_popDuration, () {
       if (!mounted) return;
       setState(() => _holes[index] = null);
     });
   }
 
   void _tapHole(int index) {
-    if (_finished) return;
+    if (!_fieldReady || _paused || _finished) return;
     final item = _holes[index];
     if (item == null) return;
     _hideTimers[index]?.cancel();
@@ -152,14 +187,14 @@ class _GameFourScreenState extends State<GameFourScreen> {
     _spawnTimer?.cancel();
     _clock?.cancel();
     HapticFeedback.vibrate();
-    _impactTimer = Timer(const Duration(milliseconds: 180), () {
+    _impactTimer = _delay(const Duration(milliseconds: 180), () {
       if (mounted && _exploding) HapticFeedback.heavyImpact();
     });
     for (final timer in _hideTimers) {
       timer?.cancel();
     }
     setState(() => _exploding = true);
-    _boomTimer = Timer(_boomDuration, () {
+    _boomTimer = _delay(_boomDuration, () {
       if (!mounted) return;
       setState(() {
         _exploding = false;
@@ -199,11 +234,15 @@ class _GameFourScreenState extends State<GameFourScreen> {
     for (final t in _hideTimers) {
       t?.cancel();
     }
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _field.items = _holes.map((item) => item?.asset).toList();
+    _field.inputEnabled = _introDone && !_finished;
+    _field.reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Stack(
       children: [
         GameBackground(
@@ -264,48 +303,18 @@ class _GameFourScreenState extends State<GameFourScreen> {
                     ),
                   ),
                 ],
-                const Spacer(),
-                GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 1,
-                  children: List.generate(_holeCount, (i) {
-                    final item = _holes[i];
-                    return GestureDetector(
-                      onTap: () => _tapHole(i),
-                      child: Container(
-                        clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Center(
-                          child: AnimatedScale(
-                            scale: item == null ? 0.0 : 1.0,
-                            duration: const Duration(milliseconds: 140),
-                            curve: Curves.easeOutBack,
-                            child: item == null
-                                ? const SizedBox.shrink()
-                                : Padding(
-                                    padding: const EdgeInsets.all(6),
-                                    child: Image.asset(
-                                      item.asset,
-                                      fit: BoxFit.contain,
-                                      gaplessPlayback: true,
-                                    ),
-                                  ),
-                          ),
-                        ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: GameWidget(
+                    game: _field,
+                    loadingBuilder: (_) => const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFFFBBD0),
                       ),
-                    );
-                  }),
+                    ),
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 18),
               ],
             ),
           ),
