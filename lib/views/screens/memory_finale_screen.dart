@@ -16,7 +16,6 @@ class MemoryFinaleScreen extends StatefulWidget {
 class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     with WidgetsBindingObserver {
   final _music = AudioPlayer();
-  final _progress = ValueNotifier<(int, double)>((0, 0));
   MemoryAlbumGame? _album;
   int _photoCount = 0;
   bool _loading = true;
@@ -49,12 +48,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
                 .toList()
               ..sort();
       }
-      final album = MemoryAlbumGame(
-        photos: photos,
-        onProgress: (index, progress) {
-          if (mounted) _progress.value = (index, progress);
-        },
-      );
+      final album = MemoryAlbumGame(photos: photos, onProgress: (_, _) {});
       if (!_active) album.pauseEngine();
       setState(() {
         _album = album;
@@ -97,7 +91,6 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _music.dispose().catchError((Object _) {});
-    _progress.dispose();
     super.dispose();
   }
 
@@ -160,41 +153,12 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
                             ),
                           ),
                           const SizedBox(height: 14),
-                          ValueListenableBuilder<(int, double)>(
-                            valueListenable: _progress,
-                            builder: (context, progress, _) => Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const Expanded(
-                                      child: Text(
-                                        'WITH YOU, ALWAYS  /  无限循环',
-                                        style: TextStyle(
-                                          color: Color(0xFFB6A0AB),
-                                          fontSize: 9,
-                                          letterSpacing: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '${(progress.$1 + 1).toString().padLeft(3, '0')} / ${_photoCount.toString().padLeft(3, '0')}',
-                                      key: const ValueKey('finale-counter'),
-                                      style: const TextStyle(
-                                        color: Color(0xFFD3BBA9),
-                                        fontSize: 10,
-                                        letterSpacing: 2,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                LinearProgressIndicator(
-                                  value: progress.$2,
-                                  minHeight: 1,
-                                  color: const Color(0xFFE3B9C8),
-                                  backgroundColor: const Color(0x33E3B9C8),
-                                ),
-                              ],
+                          const Text(
+                            'WITH YOU, ALWAYS',
+                            style: TextStyle(
+                              color: Color(0xFFB6A0AB),
+                              fontSize: 9,
+                              letterSpacing: 1.5,
                             ),
                           ),
                         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/door_key_glow.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 /// The whole door fills with light until the screen is entirely white.
@@ -60,10 +61,11 @@ class _DoorOpeningScreenState extends State<DoorOpeningScreen>
             fit: StackFit.expand,
             children: [
               Transform.scale(
+                alignment: const Alignment(0, -.6),
                 scale: reduced
                     ? 1
                     : 1 +
-                          .32 *
+                          .85 *
                               Curves.easeInOutCubic.transform(
                                 (_controller.value / .32).clamp(0.0, 1.0),
                               ),
@@ -92,10 +94,7 @@ class _DoorOpeningScreenState extends State<DoorOpeningScreen>
                               maxWidth: box.maxWidth,
                               minHeight: box.maxHeight,
                               maxHeight: box.maxHeight,
-                              child: Image.asset(
-                                'assets/photos/bigDoor.png',
-                                fit: BoxFit.cover,
-                              ),
+                              child: const LitDoorImage(),
                             ),
                           ),
                         ),

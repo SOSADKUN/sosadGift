@@ -81,11 +81,15 @@ void main() {
     tester,
   ) async {
     final player = BirthdayPlayer();
+    final levels = StreamController<double>.broadcast();
+    addTearDown(levels.close);
     var advances = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: DigitalCakeScreen(
           birthdayPlayer: player,
+          fireworksPlayer: BirthdayPlayer(),
+          blowLevels: levels.stream,
           onComplete: () => advances++,
         ),
       ),
@@ -96,7 +100,23 @@ void main() {
     await revealCake(tester);
     await tester.tap(find.byKey(const ValueKey('birthday-candle')));
     await tester.pump();
-    expect(find.text('愿你的每一年，都被温柔以待。'), findsOneWidget);
+    expect(find.text('生日快乐！！！'), findsNothing);
+    levels.add(-5); // Loud sound while not holding must do nothing.
+    await tester.pump();
+    expect(find.text('生日快乐！！！'), findsNothing);
+    final hold = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('hold-to-blow'))),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(
+      find.text('生日快乐！！！'),
+      findsNothing,
+    ); // Holding alone is insufficient.
+    levels.add(-5);
+    await tester.pump();
+    await hold.up();
+    expect(find.text('生日快乐！！！'), findsOneWidget);
     await tester.pump(const Duration(seconds: 10));
     expect(advances, 0);
     player.completed.add(null);
@@ -108,15 +128,19 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('song completion advances without requiring a candle tap', (
+  testWidgets('song completion waits for a held blow and the full fireworks', (
     tester,
   ) async {
     final player = BirthdayPlayer();
+    final levels = StreamController<double>.broadcast();
+    addTearDown(levels.close);
     var advances = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: DigitalCakeScreen(
           birthdayPlayer: player,
+          fireworksPlayer: BirthdayPlayer(),
+          blowLevels: levels.stream,
           onComplete: () => advances++,
         ),
       ),
@@ -126,6 +150,20 @@ void main() {
     await tester.pump();
     expect(advances, 0);
     await revealCake(tester);
+    expect(advances, 0);
+    final hold = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('hold-to-blow'))),
+    );
+    await tester.pump();
+    levels.add(-5);
+    await tester.pump();
+    await hold.up();
+    await tester.pump();
+    expect(find.text('生日快乐！！！'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 5900));
+    expect(advances, 0);
+    await tester.pump(const Duration(milliseconds: 100));
     expect(advances, 1);
     await tester.pumpWidget(const SizedBox());
   });
@@ -139,6 +177,7 @@ void main() {
       MaterialApp(
         home: DigitalCakeScreen(
           birthdayPlayer: player,
+          fireworksPlayer: BirthdayPlayer(),
           onComplete: () => advances++,
         ),
       ),
@@ -166,7 +205,10 @@ void main() {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: ThemeData(fontFamily: 'preview'),
-          home: DigitalCakeScreen(birthdayPlayer: BirthdayPlayer()),
+          home: DigitalCakeScreen(
+            birthdayPlayer: BirthdayPlayer(),
+            fireworksPlayer: BirthdayPlayer(),
+          ),
         ),
       ),
     );

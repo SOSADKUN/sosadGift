@@ -3,6 +3,7 @@ import '../../../games/game_timer.dart';
 import 'package:flame/game.dart';
 import '../../../games/maze_game.dart';
 import '../../../games/maze_layouts.dart';
+import '../../../games/maze_bomb_puzzle.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -74,6 +75,17 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   bool _finished = false;
   bool _won = false;
   bool _claimed = false;
+  Offset? _board;
+  Offset? _bombPickup;
+  Offset? _plantedBomb;
+  Offset? _cameraFocus;
+  bool _carryingBomb = false;
+  int _bombSeconds = 0;
+  Timer? _fuse;
+  Offset get _playerCell =>
+      Offset(_playerCol.toDouble(), _playerRow.toDouble());
+  double _distance(Offset a, Offset b) =>
+      (a.dx - b.dx).abs() + (a.dy - b.dy).abs();
   late bool _introDone;
 
   _Point _findChar(List<String> maze, String char) {
@@ -139,6 +151,10 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   }
 
   void _resetLevelState() {
+    _fuse?.cancel();
+    _board = _bombPickup = _plantedBomb = _cameraFocus = null;
+    _carryingBomb = false;
+    _bombSeconds = 0;
     _holdTimer?.cancel();
     _cameraTimer?.cancel();
     _messageTimer?.cancel();
@@ -216,6 +232,10 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       setState(() => _facing = facing);
       return;
     }
+    if (_board == Offset(newCol.toDouble(), newRow.toDouble())) {
+      setState(() => _message = '木板挡住了！拿炸弹，靠近木板放下。');
+      return;
+    }
     HapticFeedback.selectionClick();
     setState(() {
       _playerRow = newRow;
@@ -224,7 +244,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     });
     _syncField();
     if (_playerRow == _currentGoal.row && _playerCol == _currentGoal.col) {
-      _levelClear();
+      if (_board == null) _levelClear();
       return;
     }
     if (!_goalFled && _isAdjacentToCurrentGoal()) {
@@ -259,11 +279,34 @@ class _GameThreeScreenState extends State<GameThreeScreen>
           _lookAtStart = false;
           _message = '他跑回去了！！出发追回它吧！';
         });
-        _cameraTimer = _delay(const Duration(milliseconds: 1800), () {
+        _cameraTimer = _delay(const Duration(milliseconds: 1300), () {
           if (!mounted || _finished) return;
+          final puzzle = mazeBombPuzzle(
+            _mazeRows,
+            _playerCell,
+            Offset(_currentGoal.col.toDouble(), _currentGoal.row.toDouble()),
+          );
           setState(() {
-            _cameraTour = false;
-            _message = null;
+            _board = puzzle.board;
+            _bombPickup = puzzle.bomb;
+            _message = '木板掉下来了！附近有炸弹…';
+          });
+          _field.dropBoard(puzzle.board);
+          HapticFeedback.heavyImpact();
+          _cameraTimer = _delay(const Duration(milliseconds: 850), () {
+            if (!mounted || _finished) return;
+            setState(() {
+              _cameraFocus = _bombPickup;
+              _message = '去拿炸弹，靠近木板放下，3 秒后爆炸！';
+            });
+            _cameraTimer = _delay(const Duration(milliseconds: 2600), () {
+              if (!mounted || _finished) return;
+              setState(() => _cameraFocus = null);
+              _cameraTimer = _delay(const Duration(milliseconds: 1700), () {
+                if (!mounted || _finished) return;
+                setState(() => _cameraTour = false);
+              });
+            });
           });
         });
       });
@@ -271,6 +314,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   }
 
   void _fail() {
+    _fuse?.cancel();
     _holdTimer?.cancel();
     _clock?.cancel();
     _cameraTimer?.cancel();
@@ -293,12 +337,65 @@ class _GameThreeScreenState extends State<GameThreeScreen>
 
   @override
   void dispose() {
+    _fuse?.cancel();
     _holdTimer?.cancel();
     _clock?.cancel();
     _messageTimer?.cancel();
     _cameraTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _takeBomb() {
+    if (_cameraTour ||
+        _finished ||
+        _paused ||
+        _bombPickup == null ||
+        _distance(_playerCell, _bombPickup!) > 1) {
+      return;
+    }
+    setState(() {
+      _bombPickup = null;
+      _carryingBomb = true;
+      _message = '拿到了！靠近木板后放下炸弹。';
+    });
+  }
+
+  void _plantBomb() {
+    if (_cameraTour ||
+        _finished ||
+        _paused ||
+        !_carryingBomb ||
+        _board == null ||
+        _distance(_playerCell, _board!) != 1) {
+      return;
+    }
+    setState(() {
+      _carryingBomb = false;
+      _plantedBomb = _playerCell;
+      _bombSeconds = 3;
+      _message = '炸弹已放下，快退开！';
+    });
+    _fuse = _repeat(const Duration(seconds: 1), (timer) {
+      if (!mounted || _finished) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _bombSeconds--);
+      if (_bombSeconds > 0) return;
+      timer.cancel();
+      _field.explode(_plantedBomb!);
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _board = null;
+        _plantedBomb = null;
+        _message = '木板炸开了！继续找布布！';
+      });
+      _messageTimer?.cancel();
+      _messageTimer = _delay(const Duration(seconds: 2), () {
+        if (mounted && !_finished) setState(() => _message = null);
+      });
+    });
   }
 
   void _onJoystick(Offset direction) {
@@ -320,6 +417,11 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     _field.cameraTour = _cameraTour;
     _field.lookAtStart = _lookAtStart;
     _field.lookAtGoal = _lookAtGoal;
+    _field.cameraFocus = _cameraFocus;
+    _field.boardPosition = _board;
+    _field.bombPickup = _bombPickup;
+    _field.plantedBomb = _plantedBomb;
+    _field.bombSeconds = _bombSeconds;
     _field.facingCol = _facing == _Facing.right
         ? 1
         : _facing == _Facing.left
@@ -394,6 +496,29 @@ class _GameThreeScreenState extends State<GameThreeScreen>
                   onChanged: _onJoystick,
                 ),
               ),
+              if (_board != null && !_cameraTour && !_finished)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: FilledButton(
+                    onPressed: _paused
+                        ? null
+                        : _carryingBomb
+                        ? (_distance(_playerCell, _board!) == 1
+                              ? _plantBomb
+                              : null)
+                        : (_bombPickup != null &&
+                                  _distance(_playerCell, _bombPickup!) <= 1
+                              ? _takeBomb
+                              : null),
+                    child: Text(
+                      _plantedBomb != null
+                          ? '$_bombSeconds 秒后爆炸'
+                          : _carryingBomb
+                          ? '放下炸弹'
+                          : '拿起炸弹',
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

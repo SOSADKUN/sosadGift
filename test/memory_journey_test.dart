@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gift/models/story_entry.dart';
 import 'package:gift/views/widgets/memory_journey.dart';
@@ -32,11 +33,11 @@ void main() {
       );
       expect(find.text('下一页  ↗'), findsNothing);
       for (var i = 0; i < 3; i++) {
-        await tester.tap(find.byTooltip('下一段回忆'));
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
         expect(find.text('下一页  ↗'), i == 2 ? findsOneWidget : findsNothing);
       }
-      await tester.tap(find.byTooltip('上一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
       expect(find.text('下一页  ↗'), findsNothing);
     },
@@ -65,19 +66,19 @@ void main() {
       expect(find.text('2022年'), findsOneWidget);
       expect(find.text('原神开端'), findsOneWidget);
       expect(find.byKey(const ValueKey('memory-photo-1')), findsNothing);
-      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(find.text('First photo'), findsOneWidget);
       expect(find.text('2022年'), findsNothing);
-      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(find.text('2023年'), findsOneWidget);
       expect(find.text('香水味～'), findsOneWidget);
       expect(find.byKey(const ValueKey('memory-photo-3')), findsNothing);
-      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(find.text('Second photo'), findsOneWidget);
-      await tester.tap(find.byTooltip('上一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
       expect(find.text('2023年'), findsOneWidget);
     },
@@ -115,10 +116,10 @@ void main() {
         home: MemoryJourney(entries: entries, onComplete: () {}),
       ),
     );
-    await tester.tap(find.byTooltip('上一段回忆'));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     expect(find.text('01 / 04'), findsOneWidget);
     for (var i = 0; i < 5; i++) {
-      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
     }
     expect(find.text('04 / 04'), findsOneWidget);
@@ -157,12 +158,12 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.byTooltip('下一段回忆'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(find.text('Our first little memory.'), findsOneWidget);
       expect(find.text('下一页  ↗'), findsNothing);
       for (var i = 0; i < 2; i++) {
-        await tester.tap(find.byTooltip('下一段回忆'));
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump();
       }
       expect(find.text('下一页  ↗'), findsOneWidget);

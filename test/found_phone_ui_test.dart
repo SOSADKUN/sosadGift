@@ -28,12 +28,12 @@ Future<void> walkNearPhone(WidgetTester tester) async {
   final touch = await tester.startGesture(
     tester.getCenter(find.byKey(const ValueKey('phone-walk-1'))),
   );
-  for (var i = 0; i < 110; i++) {
+  for (var i = 0; i < 125; i++) {
     await tester.pump(const Duration(milliseconds: 40));
   }
   await touch.up();
   await tester.pump();
-  expect(find.text('捡起手机'), findsOneWidget);
+  expect(find.text('捡起'), findsOneWidget);
 }
 
 void main() {
@@ -60,9 +60,9 @@ void main() {
         .first;
     expect(tester.widget<Opacity>(veil).opacity, 1);
     await tester.pump(const Duration(milliseconds: 3700));
-    expect(find.text('捡起手机'), findsNothing);
+    expect(find.text('捡起'), findsNothing);
     await walkNearPhone(tester);
-    await tester.tap(find.text('捡起手机'));
+    await tester.tap(find.text('捡起'));
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.text('你捡起了一部手机。\n屏幕里，似乎藏着一段未读的故事。'), findsOneWidget);
     expect(find.text('输入密码'), findsNothing);
@@ -153,7 +153,15 @@ void main() {
       MaterialApp(home: DoorOpeningScreen(onComplete: () => completed++)),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 4800));
+    await tester.pump(const Duration(milliseconds: 1000));
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(ValueKey('opening-key-glow-$i')), findsNWidgets(2));
+    }
+    await tester.pump(const Duration(milliseconds: 1500));
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(ValueKey('opening-key-glow-$i')), findsNWidgets(2));
+    }
+    await tester.pump(const Duration(milliseconds: 2300));
     final veil = find
         .ancestor(
           of: find.byKey(const ValueKey('door-whiteout')),
@@ -194,7 +202,7 @@ void main() {
     await tester.pump();
     expect(find.text('打开手机'), findsNothing);
     await walkNearPhone(tester);
-    await tester.tap(find.text('捡起手机'));
+    await tester.tap(find.text('捡起'));
     await tester.pump(const Duration(milliseconds: 700));
     expect(pickedUp, 0);
     await tester.tap(find.text('打开手机'));

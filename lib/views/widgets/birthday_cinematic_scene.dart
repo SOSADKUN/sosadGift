@@ -1,9 +1,7 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-/// Uses the approved concept frames for the exact cake and lighting artwork.
+/// Procedural geometry only: orbiting digits assemble two cylindrical tiers.
 class BirthdayCinematicScene extends StatefulWidget {
   const BirthdayCinematicScene({
     super.key,
@@ -12,8 +10,7 @@ class BirthdayCinematicScene extends StatefulWidget {
     required this.onCandleTap,
   });
   final bool blownOut;
-  final VoidCallback onReady;
-  final VoidCallback onCandleTap;
+  final VoidCallback onReady, onCandleTap;
   @override
   State<BirthdayCinematicScene> createState() => _BirthdayCinematicSceneState();
 }
@@ -28,226 +25,395 @@ class _BirthdayCinematicSceneState extends State<BirthdayCinematicScene>
     vsync: this,
     duration: const Duration(seconds: 24),
   )..repeat();
-  ui.Image? _digital;
-  ui.Image? _floral;
-  bool _failed = false;
-
   @override
   void initState() {
     super.initState();
     _formation.addStatusListener((status) {
       if (status == AnimationStatus.completed) widget.onReady();
     });
-    _load();
-  }
-
-  Future<ui.Image> _image(String path) async {
-    final data = await rootBundle.load(path);
-    final codec = await ui.instantiateImageCodec(
-      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-    );
-    try {
-      return (await codec.getNextFrame()).image;
-    } finally {
-      codec.dispose();
-    }
-  }
-
-  Future<void> _load() async {
-    try {
-      final digital = await _image('assets/cake/digital_formation.png');
-      if (!mounted) {
-        digital.dispose();
-        return;
-      }
-      _digital = digital;
-      final floral = await _image('assets/cake/floral_reveal.png');
-      if (!mounted) {
-        floral.dispose();
-        return;
-      }
-      setState(() => _floral = floral);
-      _formation.forward();
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
-    }
+    _formation.forward();
   }
 
   @override
   void dispose() {
     _formation.dispose();
     _ambient.dispose();
-    _digital?.dispose();
-    _floral?.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_failed) {
-      return const Center(
-        child: Icon(Icons.cake_outlined, color: Color(0xFFE5B6CE), size: 64),
-      );
-    }
-    if (_digital == null || _floral == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFE5B6CE)),
-      );
-    }
-    return AnimatedBuilder(
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: AnimatedBuilder(
       animation: Listenable.merge([_formation, _ambient]),
       builder: (context, _) => GestureDetector(
         key: const ValueKey('birthday-candle'),
         behavior: HitTestBehavior.opaque,
         onTap: _formation.isCompleted ? widget.onCandleTap : null,
         child: CustomPaint(
-          painter: _CinematicPainter(
-            _digital!,
-            _floral!,
+          size: Size.infinite,
+          painter: _CakePainter(
             _formation.value,
-            _ambient.value,
+            _ambient.value * 24,
             widget.blownOut,
             MediaQuery.disableAnimationsOf(context),
           ),
-          size: Size.infinite,
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _CinematicPainter extends CustomPainter {
-  _CinematicPainter(
-    this.digital,
-    this.floral,
-    this.progress,
-    this.ambient,
-    this.blownOut,
-    this.reduced,
-  );
-  final ui.Image digital, floral;
-  final double progress, ambient;
-  final bool blownOut, reduced;
+class _Point {
+  const _Point(this.x, this.y, this.z);
+  final double x, y, z;
+}
 
-  // Four orbital/formation frames followed by three floral materialization frames.
-  void _frame(Canvas canvas, Size size, int frame, double opacity) {
-    if (opacity <= 0) return;
-    final image = frame < 4 ? digital : floral;
-    final count = frame < 4 ? 4 : 3;
-    final index = frame < 4 ? frame : frame - 4;
-    final panelWidth = image.width / count;
-    final source = Rect.fromLTWH(
-      index * panelWidth + 3,
-      0,
-      panelWidth - 6,
-      image.height.toDouble(),
+class _Face {
+  _Face(this.points, this.color);
+  final List<_Point> points;
+  final Color color;
+  double get depth =>
+      points.fold<double>(0, (sum, p) => sum + p.z) / points.length;
+}
+
+class _CakePainter extends CustomPainter {
+  _CakePainter(this.progress, this.time, this.blownOut, this.reduced);
+  final double progress, time;
+  final bool blownOut, reduced;
+  late double angle, scale;
+  late Offset center;
+  double phase(double start, double end) => Curves.easeInOutCubic.transform(
+    ((progress - start) / (end - start)).clamp(0.0, 1.0),
+  );
+  _Point rotate(double x, double y, double z) {
+    final rx = x * math.cos(angle) - z * math.sin(angle);
+    final rz = x * math.sin(angle) + z * math.cos(angle);
+    // Elevated camera exposes the tops and preserves actual depth in rotation.
+    return _Point(rx, y * .82 + rz * .57, -y * .57 + rz * .82);
+  }
+
+  Offset project(_Point p) {
+    final perspective = 700 / (700 - p.z);
+    return center + Offset(p.x, p.y) * (scale * perspective);
+  }
+
+  Color alpha(Color c, double a) => c.withValues(alpha: a.clamp(0.0, 1.0));
+  void cylinder(
+    List<_Face> faces,
+    double radius,
+    double top,
+    double bottom,
+    Color color,
+    double opacity,
+  ) {
+    const segments = 64;
+    final rim = <_Point>[];
+    for (var i = 0; i < segments; i++) {
+      final a = i * math.pi * 2 / segments;
+      final b = (i + 1) * math.pi * 2 / segments;
+      _Point at(double theta, double y) =>
+          rotate(radius * math.cos(theta), y, radius * math.sin(theta));
+      rim.add(at(a, top));
+      final light = .92 + .07 * math.cos(a + angle + .7);
+      final shade = Color.fromARGB(
+        255,
+        (color.r * 255 * light).round(),
+        (color.g * 255 * light).round(),
+        (color.b * 255 * light).round(),
+      );
+      faces.add(
+        _Face([
+          at(a, top),
+          at(b, top),
+          at(b, bottom),
+          at(a, bottom),
+        ], alpha(shade, opacity)),
+      );
+    }
+    faces.add(
+      _Face(rim, alpha(Color.lerp(color, Colors.white, .48)!, opacity)),
     );
-    // Match the approved portrait composition. Fill with its own edge colors,
-    // then fit the whole panel so flowers, candle and cake base remain visible.
-    final fitted = applyBoxFit(BoxFit.contain, source.size, size).destination;
-    final destination = Alignment.center.inscribe(fitted, Offset.zero & size);
-    canvas.saveLayer(
-      Offset.zero & size,
-      Paint()..color = Colors.white.withValues(alpha: opacity),
-    );
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = const RadialGradient(
-          colors: [Color(0xFF513044), Color(0xFF180F20)],
-        ).createShader(Offset.zero & size),
-    );
+  }
+
+  void drawFaces(Canvas canvas, List<_Face> faces) {
+    faces.sort((a, b) => a.depth.compareTo(b.depth));
+    for (final face in faces) {
+      final points = face.points.map(project).toList();
+      final path = Path()..addPolygon(points, true);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..isAntiAlias = false
+          ..color = face.color,
+      );
+    }
+  }
+
+  void flower(
+    Canvas canvas,
+    _Point p,
+    double radius,
+    double opacity,
+    int index,
+  ) {
+    final o = project(p);
+    final r = radius * scale * 700 / (700 - p.z);
     canvas.save();
-    if (!reduced) {
-      final zoom = 1 + .035 * math.sin(progress * math.pi);
-      canvas.translate(size.width / 2, size.height / 2);
-      canvas.scale(zoom);
-      canvas.translate(-size.width / 2, -size.height / 2);
+    canvas.translate(o.dx, o.dy);
+    canvas.rotate(index * .7 + angle * .15);
+    final pink = index.isEven
+        ? const Color(0xFFFFA7CD)
+        : const Color(0xFFD7B7FF);
+    for (var petal = 0; petal < 5; petal++) {
+      canvas.save();
+      canvas.rotate(petal * math.pi * 2 / 5);
+      final rect = Rect.fromCenter(
+        center: Offset(0, -r * .65),
+        width: r,
+        height: r * 1.45,
+      );
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [alpha(Colors.white, opacity), alpha(pink, opacity)],
+          ).createShader(rect),
+      );
+      canvas.restore();
     }
-    canvas.drawImageRect(
-      image,
-      source,
-      destination,
-      Paint()..filterQuality = FilterQuality.high,
+    canvas.drawCircle(
+      Offset.zero,
+      r * .3,
+      Paint()..color = alpha(const Color(0xFFFFD880), opacity),
     );
-    if (frame == 6 && blownOut) {
-      // Cover only the painted flame with adjacent background from the same frame.
-      final flame = Rect.fromLTWH(
-        destination.left + destination.width * .47,
-        destination.top + destination.height * .09,
-        destination.width * .05,
-        destination.height * .105,
-      );
-      final background = Rect.fromLTWH(
-        source.left + source.width * .32,
-        source.height * .09,
-        source.width * .05,
-        source.height * .105,
-      );
-      canvas.drawImageRect(
-        image,
-        background,
-        flame,
-        Paint()..filterQuality = FilterQuality.high,
-      );
-    }
-    canvas.restore();
     canvas.restore();
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stage = (progress * 6).clamp(0.0, 6.0);
-    final current = stage.floor();
-    final blend = Curves.easeInOut.transform(stage - current);
-    _frame(canvas, size, current, 1);
-    if (current < 6) _frame(canvas, size, current + 1, blend);
-    if (reduced) return;
-    final time = progress * 10 + ambient * 24;
-    final strength = (1 - progress).clamp(.08, 1.0);
-    // Project a helix through depth, rather than rotating a flat cake picture.
-    for (var i = 0; i < 85; i++) {
-      final angle = i * 2.399 + time * .65;
-      final z = math.sin(angle);
-      final perspective = 1 / (1.4 - z * .3);
-      final radius = size.width * (.3 + .14 * (1 - progress));
-      final x = size.width / 2 + math.cos(angle) * radius * perspective;
-      final y =
-          size.height * (.35 + .38 * i / 85) +
-          math.sin(angle) * size.height * .06 * perspective;
-      final alpha = (.12 + .35 * (z + 1) / 2) * strength;
-      final color = const Color(0xFFFFD8B0).withValues(alpha: alpha);
-      canvas.drawCircle(
-        Offset(x, y),
-        (1 + perspective) * (i % 5 == 0 ? 1.8 : .6),
-        Paint()..color = color,
+    final bounds = Offset.zero & size;
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(0, .05),
+          radius: .85,
+          colors: [Color(0xFF492D59), Color(0xFF171126), Color(0xFF090715)],
+        ).createShader(bounds),
+    );
+    final orbit = phase(0, .65);
+    angle = reduced
+        ? -.3
+        : -1.4 + orbit * math.pi * 2.3 + .12 * math.sin(time * .22);
+    scale =
+        math.min(size.width / 365, size.height / 510) *
+        (.74 + .16 * phase(.15, .8));
+    center = Offset(size.width / 2, size.height * .53);
+    // Stable star field; nothing is reseeded between animation frames.
+    for (var i = 0; i < 70; i++) {
+      final o = Offset(
+        (i * .61803398875 % 1) * size.width,
+        (i * .41421356237 % 1) * size.height,
       );
-      if (i % 5 == 0 && progress < .75) {
+      canvas.drawCircle(
+        o,
+        i % 7 == 0 ? 2 : .8,
+        Paint()
+          ..color = alpha(
+            const Color(0xFFFFDAEF),
+            .12 + .18 * (1 + math.sin(time + i)) / 2,
+          ),
+      );
+    }
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center + Offset(0, 105 * scale),
+        width: 280 * scale,
+        height: 60 * scale,
+      ),
+      Paint()
+        ..color = alpha(const Color(0xFFE8AAFF), .25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
+    );
+    final material = phase(.52, .91);
+
+    final faces = <_Face>[];
+    cylinder(faces, 137, 85, 91, const Color(0xFFEED4F2), material);
+    cylinder(faces, 118, -5, 82, const Color(0xFFFAD2E4), material);
+    cylinder(faces, 78, -91, -7, const Color(0xFFFFE4EC), material);
+    cylinder(faces, 120, -9, -2, const Color(0xFFFFF8F1), material);
+    cylinder(faces, 80, -95, -88, const Color(0xFFFFF8F1), material);
+    drawFaces(canvas, faces);
+    // Hundreds of deterministic particles converge from helices to cake surfaces.
+    final particles = <(_Point, int)>[];
+    for (var i = 0; i < 760; i++) {
+      final upper = i.isEven;
+      final r = upper ? 78.0 : 118.0;
+      final a = i * 2.399963;
+      final targetY =
+          (upper ? -91.0 : -5.0) + (i * .618 % 1) * (upper ? 84 : 87);
+      final converge = phase(.12 + (i % 19) * .007, .56 + (i % 19) * .009);
+      final spin =
+          a + (reduced ? 0 : time * .8 + progress * 8) * (1 - converge);
+      final radius = r + (210 + i % 71 - r) * (1 - converge);
+      final y =
+          targetY +
+          (math.sin(i * 1.7 + time * .5) * 185 - targetY) * (1 - converge);
+      particles.add((
+        rotate(radius * math.cos(spin), y, radius * math.sin(spin)),
+        i,
+      ));
+    }
+    particles.sort((a, b) => a.$1.z.compareTo(b.$1.z));
+    for (final entry in particles) {
+      final p = entry.$1;
+      final i = entry.$2;
+      final opacity =
+          (1 - phase(.62, .92)) *
+          (.35 + .45 * ((p.z + 280) / 560).clamp(0.0, 1.0));
+      final color = alpha(
+        i % 3 == 0 ? const Color(0xFFFFD99D) : const Color(0xFFF5C5F5),
+        opacity,
+      );
+      final o = project(p);
+      if (i % 7 == 0) {
         final text = TextPainter(
           textDirection: TextDirection.ltr,
           text: TextSpan(
             text: i.isEven ? '0' : '1',
-            style: TextStyle(color: color, fontSize: 9 * perspective),
+            style: TextStyle(
+              color: color,
+              fontSize: 10 * scale * 700 / (700 - p.z),
+              fontFamily: 'monospace',
+            ),
           ),
         )..layout();
-        text.paint(canvas, Offset(x, y));
+        text.paint(canvas, o);
+      } else {
+        canvas.drawCircle(
+          o,
+          (i % 5 == 0 ? 2 : .9) * scale,
+          Paint()..color = color,
+        );
       }
     }
-    for (var i = 0; i < 14; i++) {
-      final x =
-          (i * .618 * size.width + math.sin(time * .2 + i) * 20) % size.width;
-      final y = (i * .217 * size.height - time * (3 + i % 3)) % size.height;
+    final decoration = phase(.7, 1);
+    // Piped cream beads and flowers attach to the rotating geometry.
+    final flowers = <(_Point, int)>[];
+    for (final tier in [(118.0, -5.0, 82.0), (78.0, -91.0, -7.0)]) {
+      for (var i = 0; i < 44; i++) {
+        final a = i * math.pi * 2 / 44;
+        final p = rotate(
+          tier.$1 * math.cos(a),
+          tier.$2 - 2,
+          tier.$1 * math.sin(a),
+        );
+        if (math.sin(a + angle) < -.1) continue;
+        canvas.drawCircle(
+          project(p),
+          4.2 * scale,
+          Paint()..color = alpha(Colors.white, decoration),
+        );
+        if (i % 4 == 0) {
+          final drip = rotate(
+            tier.$1 * math.cos(a),
+            tier.$2 + 10 + i % 3 * 4,
+            tier.$1 * math.sin(a),
+          );
+          canvas.drawLine(
+            project(p),
+            project(drip),
+            Paint()
+              ..strokeWidth = 7 * scale
+              ..strokeCap = StrokeCap.round
+              ..color = alpha(Colors.white, decoration),
+          );
+        }
+      }
+      for (var i = 0; i < 9; i++) {
+        final a = i * math.pi * 2 / 9;
+        if (math.sin(a + angle) < 0) continue;
+        flowers.add((
+          rotate(
+            (tier.$1 + 3) * math.cos(a),
+            tier.$2 + 40,
+            (tier.$1 + 3) * math.sin(a),
+          ),
+          i,
+        ));
+      }
+    }
+    flowers.sort((a, b) => a.$1.z.compareTo(b.$1.z));
+    for (final f in flowers) {
+      final o = project(f.$1);
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(x, y), width: 4, height: 7),
-        Paint()..color = const Color(0xFFF1C2D5).withValues(alpha: .2),
+        Rect.fromCenter(
+          center: o + Offset(9 * scale, 7 * scale),
+          width: 18 * scale,
+          height: 7 * scale,
+        ),
+        Paint()..color = alpha(const Color(0xFF9CD9BD), decoration),
+      );
+      flower(canvas, f.$1, 10, decoration, f.$2);
+    }
+    for (var i = 0; i < 6; i++) {
+      final a = i * math.pi * 2 / 6;
+      flower(
+        canvas,
+        rotate(50 * math.cos(a), -94, 50 * math.sin(a)),
+        9,
+        decoration,
+        i,
+      );
+    }
+    final candle = project(rotate(0, -96, 0));
+    final tip = project(rotate(0, -144, 0));
+    canvas.drawLine(
+      candle,
+      tip,
+      Paint()
+        ..strokeWidth = 9 * scale
+        ..strokeCap = StrokeCap.round
+        ..color = alpha(const Color(0xFFFFB5D7), decoration),
+    );
+    if (!blownOut) {
+      final flicker = reduced ? 1.0 : 1 + .09 * math.sin(time * 15);
+      canvas.drawCircle(
+        tip - Offset(0, 9 * scale),
+        15 * scale,
+        Paint()
+          ..color = alpha(const Color(0xFFFFCA71), decoration * .55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+      );
+      final flame = Path()
+        ..moveTo(tip.dx, tip.dy - 23 * scale * flicker)
+        ..cubicTo(
+          tip.dx - 13 * scale,
+          tip.dy - 8 * scale,
+          tip.dx - 7 * scale,
+          tip.dy + 2 * scale,
+          tip.dx,
+          tip.dy,
+        )
+        ..cubicTo(
+          tip.dx + 9 * scale,
+          tip.dy,
+          tip.dx + 9 * scale,
+          tip.dy - 10 * scale,
+          tip.dx,
+          tip.dy - 23 * scale * flicker,
+        );
+      canvas.drawPath(
+        flame,
+        Paint()..color = alpha(const Color(0xFFFFE7A6), decoration),
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _CinematicPainter old) =>
-      progress != old.progress ||
-      ambient != old.ambient ||
-      blownOut != old.blownOut ||
-      reduced != old.reduced;
+  bool shouldRepaint(covariant _CakePainter old) =>
+      old.progress != progress ||
+      old.time != time ||
+      old.blownOut != blownOut ||
+      old.reduced != reduced;
 }

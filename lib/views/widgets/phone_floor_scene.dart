@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'dart:math' as math;
 
 /// A white space reveals an unidentified object before the phone is discovered.
 class PhoneFloorScene extends StatefulWidget {
@@ -20,6 +22,8 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
   late final Ticker _walking;
   Duration? _lastFrame;
   int _direction = 0;
+  double _walkTime = 0;
+  AudioPlayer? _steps;
   int? _walkingPointer;
   bool _found = false;
   bool _opening = false;
@@ -32,12 +36,17 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
       _lastFrame = elapsed;
       if (last == null) return;
       final dt = ((elapsed - last).inMicroseconds / 1000000).clamp(0.0, .05);
-      _arrival.value = (_arrival.value + dt * _direction / 4).clamp(0.0, 1.0);
+      _walkTime += dt;
+      _arrival.value = (_arrival.value + dt * _direction / 5).clamp(0.0, 1.0);
+      if (_arrival.value >= .9 && _walkingPointer != null) {
+        _stopWalking(_walkingPointer!);
+      }
     });
   }
 
   @override
   void dispose() {
+    _steps?.dispose().catchError((Object _) {});
     _walking.dispose();
     _arrival.dispose();
     super.dispose();
@@ -71,7 +80,10 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                 left: box.maxWidth / 2 - (18 + 106 * reveal) / 2,
                 top:
                     box.maxHeight * (.3 + .14 * reveal) -
-                    (32 + 193 * reveal) / 2,
+                    (32 + 193 * reveal) / 2 +
+                    (_direction == 0
+                        ? 0
+                        : math.sin(_walkTime * math.pi / .275) * 3),
                 child: Opacity(
                   opacity: .5 + .5 * _arrival.value,
                   child: AnimatedRotation(
@@ -213,7 +225,7 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                                   ),
                                   FilledButton(
                                     onPressed: _inspect,
-                                    child: const Text('捡起手机'),
+                                    child: const Text('捡起'),
                                   ),
                                   const SizedBox(height: 14),
                                 ] else ...[
@@ -223,14 +235,7 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                                   ),
                                   const SizedBox(height: 14),
                                 ],
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _walkButton('后退', -1, Icons.south),
-                                    const SizedBox(width: 20),
-                                    _walkButton('前进', 1, Icons.north),
-                                  ],
-                                ),
+                                _walkButton(),
                               ],
                             ),
                     ),
@@ -244,26 +249,37 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
     ),
   );
 
-  Widget _walkButton(String label, int direction, IconData icon) => Listener(
-    key: ValueKey('phone-walk-$direction'),
+  Future<void> _startFootsteps() async {
+    final player = _steps ??= AudioPlayer();
+    try {
+      await player.setReleaseMode(ReleaseMode.loop);
+      if (!mounted || _walkingPointer == null) return;
+      await player.play(AssetSource('audio/footsteps.wav'), volume: .5);
+      if (!mounted || _walkingPointer == null) await player.pause();
+    } catch (_) {}
+  }
+
+  Widget _walkButton() => Listener(
+    key: const ValueKey('phone-walk-1'),
     onPointerDown: (event) {
-      if (_walkingPointer != null) return;
+      if (_walkingPointer != null || _arrival.value >= .9) return;
       _walkingPointer = event.pointer;
-      _direction = direction;
+      _direction = 1;
       _lastFrame = null;
       _walking.start();
+      _startFootsteps();
     },
     onPointerUp: (event) => _stopWalking(event.pointer),
     onPointerCancel: (event) => _stopWalking(event.pointer),
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 17),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1ECEF),
-        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFF302738),
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [Icon(icon, size: 20), const SizedBox(width: 8), Text(label)],
+      child: const Text(
+        '往前走',
+        style: TextStyle(color: Colors.white, fontSize: 16),
       ),
     ),
   );
@@ -274,6 +290,8 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
     _direction = 0;
     _lastFrame = null;
     _walking.stop();
+    _steps?.pause().catchError((Object _) {});
+    if (mounted) setState(() {});
   }
 
   Widget _card({

@@ -6,13 +6,14 @@ import 'package:flutter/services.dart';
 import '../config/memory_display_config.dart';
 import 'memory_float_pose.dart';
 
-/// Continuous atmosphere and a bounded, three-photo decode cache.
+/// Continuous atmosphere, three foreground photos and three small backdrop photos.
 class MemoryAlbumGame extends FlameGame {
   MemoryAlbumGame({required this.photos, required this.onProgress});
   final List<String> photos;
   final void Function(int index, double progress) onProgress;
   final Map<int, ui.Image> _images = {};
   final Set<int> _failed = {};
+  final List<ui.Image> _backgroundPhotos = [];
   final Map<int, Future<void>> _pending = {};
   int _index = 0;
   double _cycle = 0;
@@ -37,6 +38,27 @@ class MemoryAlbumGame extends FlameGame {
   Future<void> onLoad() async {
     if (photos.isEmpty) return;
     await _load(0);
+    for (var i = 0; i < math.min(3, photos.length); i++) {
+      ui.Codec? codec;
+      try {
+        final path = photos[(i * photos.length ~/ 3) % photos.length];
+        final data = await rootBundle.load(path);
+        codec = await ui.instantiateImageCodec(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          targetWidth: 220,
+        );
+        final frame = await codec.getNextFrame();
+        if (_disposed) {
+          frame.image.dispose();
+          return;
+        }
+        _backgroundPhotos.add(frame.image);
+      } catch (_) {
+        // A missing background photo does not interrupt the foreground album.
+      } finally {
+        codec?.dispose();
+      }
+    }
     _preload();
   }
 
@@ -158,6 +180,38 @@ class MemoryAlbumGame extends FlameGame {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28),
       );
     }
+    // Separate low-resolution photos keep drifting across foreground changes.
+    for (var i = 0; i < _backgroundPhotos.length; i++) {
+      final image = _backgroundPhotos[i];
+      final x = size.x * (.5 + .44 * math.sin(phase * .055 + i * 2.1));
+      final y = size.y * (.5 + .35 * math.cos(phase * .037 + i * 2.7));
+      final fitted = applyBoxFit(
+        BoxFit.contain,
+        Size(image.width.toDouble(), image.height.toDouble()),
+        Size(size.x * .34, size.y * .25),
+      ).destination;
+      final rect = Rect.fromCenter(
+        center: Offset.zero,
+        width: fitted.width,
+        height: fitted.height,
+      );
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(.18 * math.sin(phase * .04 + i));
+      canvas.drawRect(
+        rect.inflate(5),
+        Paint()..color = const Color(0xFFF5EDE3).withValues(alpha: .18),
+      );
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        rect,
+        Paint()
+          ..color = Colors.white.withValues(alpha: .18)
+          ..filterQuality = FilterQuality.low,
+      );
+      canvas.restore();
+    }
     if (photos.isEmpty) return;
     final duration = MemoryDisplayConfig.photoDuration.inMilliseconds / 1000;
     final t = (_cycle / duration).clamp(0.0, 1.0);
@@ -219,6 +273,10 @@ class MemoryAlbumGame extends FlameGame {
       image.dispose();
     }
     _images.clear();
+    for (final image in _backgroundPhotos) {
+      image.dispose();
+    }
+    _backgroundPhotos.clear();
     super.onRemove();
   }
 }

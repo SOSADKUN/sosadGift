@@ -8,14 +8,25 @@ import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../widgets/birthday_cinematic_scene.dart';
+import '../widgets/birthday_fireworks.dart';
 
-/// A dreamlike cake reveal; only the end of the birthday song advances it.
+/// Reveal, hold-to-blow interaction, then a complete fireworks celebration.
 class DigitalCakeScreen extends StatefulWidget {
-  const DigitalCakeScreen({super.key, this.onComplete, this.birthdayPlayer});
+  const DigitalCakeScreen({
+    super.key,
+    this.onComplete,
+    this.birthdayPlayer,
+    this.fireworksPlayer,
+    this.blowLevels,
+  });
   final VoidCallback? onComplete;
 
   /// Optional player for testing audio completion independently of native audio.
   final AudioPlayer? birthdayPlayer;
+  final AudioPlayer? fireworksPlayer;
+
+  /// Injectable microphone levels for platforms without a native recorder.
+  final Stream<double>? blowLevels;
 
   @override
   State<DigitalCakeScreen> createState() => _DigitalCakeScreenState();
@@ -30,6 +41,24 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   bool _songFinished = false;
   bool _blownOut = false;
   bool _micActive = false;
+  bool _holdingBlow = false;
+  bool _micStarting = false;
+  String? _micMessage;
+  int _micSession = 0;
+  StreamSubscription<double>? _levelSub;
+  bool _celebrationFinished = false;
+  late final _fireworkSound = widget.fireworksPlayer ?? AudioPlayer();
+  late final AnimationController _celebration =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 6),
+        animationBehavior: AnimationBehavior.preserve,
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _celebrationFinished = true;
+          _scheduleFinale();
+        }
+      });
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _audioSub;
@@ -68,12 +97,29 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   }
 
   Future<void> _initMic() async {
-    final status = await Permission.microphone.request();
-    if (!mounted || !status.isGranted || _blownOut) return;
-
+    if (!_cakeReady || _blownOut || _micStarting) return;
+    final session = ++_micSession;
+    setState(() {
+      _holdingBlow = true;
+      _micStarting = true;
+      _micMessage = null;
+    });
+    bool active() =>
+        mounted && _holdingBlow && !_blownOut && session == _micSession;
     try {
+      if (widget.blowLevels != null) {
+        _levelSub = widget.blowLevels!.listen(_onLevel);
+        if (active()) setState(() => _micActive = true);
+        return;
+      }
+      final status = await Permission.microphone.request();
+      if (!active()) return;
+      if (!status.isGranted) {
+        setState(() => _micMessage = '需要麦克风权限才能吹灭蜡烛');
+        return;
+      }
       final recorder = _recorder ??= AudioRecorder();
-      if (!await recorder.hasPermission() || !mounted) return;
+      if (!await recorder.hasPermission() || !active()) return;
       final stream = await recorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
@@ -81,19 +127,51 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
           numChannels: 1,
         ),
       );
-      _audioSub = stream.listen(_onAudioChunk, onError: (_) {});
-      if (mounted) setState(() => _micActive = true);
+      if (!active()) {
+        await recorder.stop();
+        return;
+      }
+      _audioSub = stream.listen(
+        _onAudioChunk,
+        onError: (_) {
+          if (mounted) setState(() => _micMessage = '麦克风暂时不可用，请重试');
+          _releaseBlow();
+        },
+      );
+      setState(() => _micActive = true);
     } catch (_) {
-      // Simulator / unsupported platform — silently fall back to tap-only.
+      if (mounted) setState(() => _micMessage = '麦克风暂时不可用，请在真机重试');
+    } finally {
+      if (mounted) setState(() => _micStarting = false);
     }
   }
 
-  void _onAudioChunk(Uint8List chunk) {
-    if (_blownOut) return;
-    if (_decibelsFromPcm16(chunk) >= _blowThresholdDb) {
+  void _releaseBlow() {
+    _micSession++;
+    _audioSub?.cancel();
+    _audioSub = null;
+    _levelSub?.cancel();
+    _levelSub = null;
+    _recorder?.stop().catchError((Object _) => null);
+    if (mounted) {
+      setState(() {
+        _holdingBlow = false;
+        _micActive = false;
+      });
+    }
+  }
+
+  void _onLevel(double level) {
+    if (_holdingBlow &&
+        _micActive &&
+        _cakeReady &&
+        !_blownOut &&
+        level >= _blowThresholdDb) {
       _blowOutCandle();
     }
   }
+
+  void _onAudioChunk(Uint8List chunk) => _onLevel(_decibelsFromPcm16(chunk));
 
   /// Computes RMS-based dBFS from a chunk of little-endian 16-bit PCM audio.
   double _decibelsFromPcm16(Uint8List bytes) {
@@ -113,22 +191,34 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   }
 
   void _blowOutCandle() {
-    if (_blownOut) return;
+    if (_blownOut || !_holdingBlow || !_micActive || !_cakeReady) return;
     setState(() => _blownOut = true);
     HapticFeedback.mediumImpact();
-    _audioSub?.cancel();
-    _recorder?.stop();
-    _scheduleFinale();
+    _releaseBlow();
+    _celebration.forward();
+    _fireworkSound
+        .play(AssetSource('audio/birthday_fireworks.wav'), volume: .65)
+        .catchError((Object _) {});
   }
 
   void _scheduleFinale() {
-    if (!mounted || !_songFinished || !_cakeReady || _completed) return;
+    if (!mounted ||
+        !_songFinished ||
+        !_cakeReady ||
+        !_blownOut ||
+        !_celebrationFinished ||
+        _completed) {
+      return;
+    }
     _completed = true;
     widget.onComplete?.call();
   }
 
   @override
   void dispose() {
+    _celebration.dispose();
+    _fireworkSound.dispose().catchError((Object _) {});
+    _levelSub?.cancel();
     _birthdayComplete?.cancel();
     _birthdayPlayer.dispose();
     _audioSub?.cancel();
@@ -149,7 +239,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
             setState(() => _cakeReady = true);
             _scheduleFinale();
           },
-          onCandleTap: _blowOutCandle,
+          onCandleTap: () {},
         ),
         IgnorePointer(
           child: SafeArea(
@@ -181,11 +271,11 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                     opacity: _cakeReady ? 1 : 0,
                     duration: const Duration(milliseconds: 900),
                     child: Text(
-                      _blownOut ? '愿你的每一年，都被温柔以待。' : '闭上眼睛，许一个愿。',
+                      _blownOut ? '生日快乐！！！' : '闭上眼睛，许一个愿。',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFF7E5DF),
-                        fontSize: 17,
+                      style: TextStyle(
+                        color: const Color(0xFFF7E5DF),
+                        fontSize: _blownOut ? 28 : 17,
                         letterSpacing: 2,
                       ),
                     ),
@@ -196,6 +286,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
             ),
           ),
         ),
+        if (_blownOut) BirthdayFireworks(animation: _celebration),
         Positioned(
           bottom: MediaQuery.paddingOf(context).bottom + 10,
           left: 0,
@@ -207,15 +298,49 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                     icon: const Icon(Icons.music_note),
                     label: const Text('重新播放生日歌'),
                   )
-                : _cakeReady
-                ? IconButton(
-                    tooltip: '开启吹蜡烛',
-                    onPressed: _micActive || _blownOut ? null : _initMic,
-                    icon: Icon(
-                      _micActive ? Icons.mic : Icons.mic_none,
-                      color: const Color(0xFFBBA3BE),
-                      size: 18,
-                    ),
+                : _cakeReady && !_blownOut
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_micMessage != null)
+                        Text(
+                          _micMessage!,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      Listener(
+                        onPointerDown: (_) => _initMic(),
+                        onPointerUp: (_) => _releaseBlow(),
+                        onPointerCancel: (_) => _releaseBlow(),
+                        child: Semantics(
+                          button: true,
+                          label: '按住吹蜡烛',
+                          child: Container(
+                            key: const ValueKey('hold-to-blow'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 28,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _micActive
+                                  ? const Color(0xFFBB749C)
+                                  : const Color(0xFF6D456B),
+                              borderRadius: BorderRadius.circular(28),
+                              border: Border.all(
+                                color: const Color(0xFFE9BADA),
+                              ),
+                            ),
+                            child: Text(
+                              _micStarting
+                                  ? '正在开启麦克风…'
+                                  : _micActive
+                                  ? '对着麦克风吹气～'
+                                  : '按住这里，吹蜡烛',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 : const SizedBox.shrink(),
           ),

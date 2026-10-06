@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import '../widgets/video_player_widget.dart';
 
-class DiaryLoadingScreen extends StatelessWidget {
+class DiaryLoadingScreen extends StatefulWidget {
   final VoidCallback onComplete;
 
   const DiaryLoadingScreen({super.key, required this.onComplete});
+
+  @override
+  State<DiaryLoadingScreen> createState() => _DiaryLoadingScreenState();
+}
+
+class _DiaryLoadingScreenState extends State<DiaryLoadingScreen> {
+  bool _opened = false;
+
+  void _openDiary() {
+    if (_opened) return;
+    _opened = true;
+    widget.onComplete();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,17 +40,19 @@ class DiaryLoadingScreen extends StatelessWidget {
             bottom: 60,
             child: Center(
               child: GestureDetector(
-                onTap: onComplete,
+                onTap: _openDiary,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(color: Colors.white54),
                   ),
                   child: const Text(
-                    '轻触打开日记',
+                    '打开日记',
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ),

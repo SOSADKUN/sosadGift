@@ -19,6 +19,28 @@ class MazeGame extends FlameGame {
   final _library = AnimatedGameAssets();
   SpriteAnimationTicker? _walker;
   SpriteAnimationTicker? _heart;
+  SpriteAnimationTicker? _bombSprite;
+  SpriteAnimationTicker? _explosionSprite;
+  Offset? boardPosition;
+  Offset? bombPickup;
+  Offset? plantedBomb;
+  Offset? cameraFocus;
+  int bombSeconds = 0;
+  double _fallTime = 1;
+  double _explosionTime = 10;
+  Offset? _blastPosition;
+
+  void dropBoard(Offset position) {
+    boardPosition = position;
+    _fallTime = 0;
+  }
+
+  void explode(Offset position) {
+    _blastPosition = position;
+    _explosionTime = 0;
+    _explosionSprite?.reset();
+  }
+
   List<String> _rows = [];
   Offset _player = Offset.zero;
   Offset _from = Offset.zero;
@@ -28,7 +50,7 @@ class MazeGame extends FlameGame {
   double _tourTime = 0;
   Offset _tourFrom = Offset.zero;
   Offset _tourTo = Offset.zero;
-  bool? _tourFocus;
+  Offset? _tourFocus;
   bool _hasSized = false;
   double _moveTime = 1;
   double _phase = 0;
@@ -88,9 +110,17 @@ class MazeGame extends FlameGame {
     await _library.load([
       'assets/photos/game3_move.gif',
       'assets/photos/game3_1.gif',
+      'assets/photos/game4_boom.gif',
+      'assets/photos/game4_booooom.gif',
     ]);
     _walker = _library.animation('assets/photos/game3_move.gif').createTicker();
     _heart = _library.animation('assets/photos/game3_1.gif').createTicker();
+    _bombSprite = _library
+        .animation('assets/photos/game4_boom.gif')
+        .createTicker();
+    _explosionSprite = _library
+        .animation('assets/photos/game4_booooom.gif')
+        .createTicker();
     onReady?.call();
   }
 
@@ -126,11 +156,13 @@ class MazeGame extends FlameGame {
   }
 
   Offset get _cameraTarget {
-    final focus = lookAtGoal
-        ? _goal
-        : lookAtStart
-        ? const Offset(1, 1)
-        : _player;
+    final focus =
+        cameraFocus ??
+        (lookAtGoal
+            ? _goal
+            : lookAtStart
+            ? const Offset(1, 1)
+            : _player);
     return Offset(
       ((focus.dx + .5) * _cell - size.x / 2).clamp(
         0.0,
@@ -150,6 +182,10 @@ class MazeGame extends FlameGame {
     _phase += step;
     _walker?.update(step);
     _heart?.update(step);
+    _bombSprite?.update(step);
+    _explosionSprite?.update(step);
+    _fallTime += step;
+    _explosionTime += step;
     _moveTime += step;
     final progress = reducedMotion
         ? 1.0
@@ -157,8 +193,8 @@ class MazeGame extends FlameGame {
     _player = Offset.lerp(_from, _destination, progress)!;
     final target = _cameraTarget;
     if (cameraTour) {
-      if (_tourFocus != (lookAtStart || lookAtGoal)) {
-        _tourFocus = lookAtStart || lookAtGoal;
+      if (_tourFocus != target) {
+        _tourFocus = target;
         _tourFrom = _camera;
         _tourTo = target;
         _tourTime = 0;
@@ -232,6 +268,7 @@ class MazeGame extends FlameGame {
     canvas.clipRect(Offset.zero & size.toSize());
     canvas.translate(-_camera.dx, -_camera.dy);
     canvas.drawPicture(_walls!);
+    _renderPuzzle(canvas);
     for (var i = 0; i < _trail.length; i++) {
       final position = (_trail[i] + const Offset(.5, .5)) * _cell;
       canvas.drawCircle(
@@ -280,7 +317,89 @@ class MazeGame extends FlameGame {
     );
     canvas.restore();
     canvas.restore();
+    // Explosion is drawn in world coordinates above the player and barricade.
+    canvas.save();
+    canvas.translate(-_camera.dx, -_camera.dy);
+    if (_explosionTime < 1 && _blastPosition != null) {
+      final c = (_blastPosition! + const Offset(.5, .5)) * _cell;
+      _explosionSprite?.getSprite().render(
+        canvas,
+        position: Vector2(c.dx - _cell * 1.2, c.dy - _cell * 1.2),
+        size: Vector2.all(_cell * 2.4),
+      );
+      for (var i = 0; i < 14; i++) {
+        final a = i * 2.399;
+        final d = _explosionTime * _cell * (1 + i % 3);
+        canvas.drawCircle(
+          c +
+              Offset(
+                cos(a) * d,
+                sin(a) * d + _explosionTime * _explosionTime * _cell,
+              ),
+          3 * (1 - _explosionTime),
+          Paint()..color = const Color(0xFFAA7044),
+        );
+      }
+    }
+    canvas.restore();
     _minimap(canvas);
+  }
+
+  void _renderPuzzle(Canvas canvas) {
+    if (boardPosition case final position?) {
+      final fall = Curves.bounceOut.transform((_fallTime / .7).clamp(0.0, 1.0));
+      final c =
+          (position + const Offset(.5, .5)) * _cell -
+          Offset(0, (1 - fall) * _cell * 5);
+      for (var i = 0; i < 3; i++) {
+        final rect = Rect.fromCenter(
+          center: c + Offset(0, (i - 1) * _cell * .24),
+          width: _cell * .94,
+          height: _cell * .23,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+          Paint()..color = const Color(0xFFAA7044),
+        );
+        canvas.drawLine(
+          rect.centerLeft + const Offset(4, 0),
+          rect.centerRight - const Offset(4, 0),
+          Paint()
+            ..color = const Color(0xFF70452C)
+            ..strokeWidth = 2,
+        );
+        for (final x in [-.35, .35]) {
+          canvas.drawCircle(
+            rect.center + Offset(_cell * x, 0),
+            2,
+            Paint()..color = const Color(0xFFE6D4B0),
+          );
+        }
+      }
+    }
+    for (final position in [bombPickup, plantedBomb]) {
+      if (position == null) continue;
+      final c = (position + const Offset(.5, .5)) * _cell;
+      _bombSprite?.getSprite().render(
+        canvas,
+        position: Vector2(c.dx - _cell * .4, c.dy - _cell * .4),
+        size: Vector2.all(_cell * .8),
+      );
+      if (position == plantedBomb) {
+        final text = TextPainter(
+          textDirection: TextDirection.ltr,
+          text: TextSpan(
+            text: '$bombSeconds',
+            style: TextStyle(
+              color: Colors.redAccent,
+              fontSize: _cell * .35,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        )..layout();
+        text.paint(canvas, c - Offset(text.width / 2, _cell * .65));
+      }
+    }
   }
 
   ui.Picture _createWalls() {

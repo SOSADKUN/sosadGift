@@ -270,7 +270,6 @@ class _MemoryJourneyState extends State<MemoryJourney>
                   children: [
                     Row(
                       children: [
-                        _navigation(Icons.west_rounded, '上一段回忆', -1),
                         Expanded(
                           child: Text(
                             _direction < 0
@@ -282,7 +281,6 @@ class _MemoryJourneyState extends State<MemoryJourney>
                             style: const TextStyle(fontSize: 11, color: _muted),
                           ),
                         ),
-                        _navigation(Icons.east_rounded, '下一段回忆', 1),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -376,12 +374,6 @@ class _MemoryJourneyState extends State<MemoryJourney>
       ),
     );
   }
-
-  Widget _navigation(IconData icon, String label, int direction) => IconButton(
-    tooltip: label,
-    onPressed: () => _step(direction),
-    icon: Icon(icon, size: 18, color: _ink),
-  );
 
   Widget _photo(int index, double width, double height, bool reduced) {
     final distance = index - _position;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/door_key_glow.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 
@@ -88,7 +89,7 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     setState(() => _activeHole = index);
     await _keyAnimation.forward(from: 0);
     if (!mounted) return;
-    _playBling();
+    _playBling(index);
     setState(() {
       _inserted.add(index);
       _activeHole = null;
@@ -100,9 +101,12 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     }
   }
 
-  Future<void> _playBling() async {
+  Future<void> _playBling(int index) async {
     try {
-      await _bling.play(AssetSource('audio/key_bling.wav'), volume: .8);
+      await _bling.play(
+        AssetSource('audio/key_bling_${index + 1}.wav'),
+        volume: .8,
+      );
     } catch (_) {}
   }
 
@@ -211,38 +215,7 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
-                if (inserted)
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          Colors.white,
-                          color,
-                          color.withValues(alpha: .2),
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color,
-                          blurRadius: 40,
-                          spreadRadius: 18,
-                        ),
-                        BoxShadow(
-                          color: color.withValues(alpha: .75),
-                          blurRadius: 110,
-                          spreadRadius: 45,
-                        ),
-                        const BoxShadow(
-                          color: Colors.white,
-                          blurRadius: 12,
-                          spreadRadius: 3,
-                        ),
-                      ],
-                    ),
-                  ),
+                if (inserted) DoorKeyGlow(color: color),
                 if (animating)
                   Transform.translate(
                     offset: Offset(
