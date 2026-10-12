@@ -97,14 +97,14 @@ void main() {
       Offset(area.right - 10, area.center.dy),
     );
     await advance(tester, 125);
-    expect(find.text('03 / 04'), findsOneWidget);
+    expect(find.text('Another day together.'), findsOneWidget);
     await gesture.up();
     await advance(tester, 60);
-    expect(find.text('03 / 04'), findsOneWidget);
+    expect(find.text('Another day together.'), findsOneWidget);
     gesture = await tester.startGesture(Offset(area.left + 10, area.center.dy));
     await advance(tester, 95);
     await gesture.up();
-    expect(find.text('01 / 04'), findsOneWidget);
+    expect(find.text('2024年'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -117,23 +117,69 @@ void main() {
       ),
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    expect(find.text('01 / 04'), findsOneWidget);
+    expect(find.text('2024年'), findsOneWidget);
     for (var i = 0; i < 5; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
     }
-    expect(find.text('04 / 04'), findsOneWidget);
+    expect(find.text('And many more to come.'), findsOneWidget);
     final area = tester.getRect(find.byKey(const ValueKey('memory-hold-area')));
     final gesture = await tester.startGesture(
       Offset(area.left + 10, area.center.dy),
     );
     await advance(tester, 25);
     await gesture.cancel();
-    final counter = tester
-        .widget<Text>(find.byKey(const ValueKey('memory-counter')))
-        .data;
+    final progress = tester
+        .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+        .value;
     await advance(tester, 80);
-    expect(find.text(counter!), findsOneWidget);
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      progress,
+    );
+    expect(find.byKey(const ValueKey('memory-counter')), findsNothing);
+  });
+
+  testWidgets('chapter and photo blend continuously across the halfway point', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MemoryJourney(entries: entries, onComplete: () {}),
+      ),
+    );
+    final area = tester.getRect(find.byKey(const ValueKey('memory-hold-area')));
+    final hold = await tester.startGesture(
+      Offset(area.right - 10, area.center.dy),
+    );
+    await advance(tester, 30);
+    double opacity(Key key) => tester
+        .widget<Opacity>(
+          find
+              .ancestor(of: find.byKey(key), matching: find.byType(Opacity))
+              .first,
+        )
+        .opacity;
+    final before = opacity(const ValueKey('memory-photo-1'));
+    expect(before, greaterThan(.3));
+    expect(find.byKey(const ValueKey('story-chapter-2024')), findsOneWidget);
+    await advance(tester, 4);
+    final after = opacity(const ValueKey('memory-photo-1'));
+    expect(after, greaterThan(before));
+    expect(after - before, lessThan(.25));
+    expect(find.byKey(const ValueKey('story-chapter-2024')), findsOneWidget);
+    await hold.up();
+    await advance(tester, 20);
+    expect(opacity(const ValueKey('memory-photo-1')), after);
+    final reverse = await tester.startGesture(
+      Offset(area.left + 10, area.center.dy),
+    );
+    await advance(tester, 4);
+    await reverse.up();
+    expect(opacity(const ValueKey('memory-photo-1')), lessThan(after));
+    expect(find.byKey(const ValueKey('memory-counter')), findsNothing);
   });
 
   testWidgets(

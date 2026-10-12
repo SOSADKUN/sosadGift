@@ -34,13 +34,10 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     duration: const Duration(milliseconds: 850),
   );
   final Set<int> _inserted = {};
-  final _bling = AudioPlayer();
-  static const _holeColors = [
-    Color(0xFFFFA7D9),
-    Color(0xFF99DEFF),
-    Color(0xFFC6A6FF),
-    Color(0xFFFFDF89),
-  ];
+  final _blings = List.generate(4, (_) => AudioPlayer());
+  late final List<Future<void>> _blingReady;
+  final _blingLoaded = List.filled(4, false);
+  static const _holeColors = doorHoleColors;
   bool _videoReady = false;
   bool _videoFinished = false;
   bool _advancing = false;
@@ -49,7 +46,19 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
   @override
   void initState() {
     super.initState();
+    _blingReady = List.generate(_blings.length, _prepareBling);
     _startVideo();
+  }
+
+  Future<void> _prepareBling(int index) async {
+    try {
+      final player = _blings[index];
+      await player.setReleaseMode(ReleaseMode.stop);
+      if (!mounted) return;
+      await player.setVolume(.8);
+      await player.setSource(AssetSource('audio/key_bling_${index + 1}.wav'));
+      _blingLoaded[index] = true;
+    } catch (_) {}
   }
 
   @override
@@ -87,6 +96,10 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
       return;
     }
     setState(() => _activeHole = index);
+    // Decode and prepare the sound before the key starts moving, so the first
+    // insertion has the same response time as the following three.
+    await _blingReady[index];
+    if (!mounted) return;
     await _keyAnimation.forward(from: 0);
     if (!mounted) return;
     _playBling(index);
@@ -103,10 +116,14 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
 
   Future<void> _playBling(int index) async {
     try {
-      await _bling.play(
-        AssetSource('audio/key_bling_${index + 1}.wav'),
-        volume: .8,
-      );
+      if (_blingLoaded[index]) {
+        await _blings[index].resume();
+      } else {
+        await _blings[index].play(
+          AssetSource('audio/key_bling_${index + 1}.wav'),
+          volume: .8,
+        );
+      }
     } catch (_) {}
   }
 
@@ -115,7 +132,9 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
     _video.removeListener(_checkVideoEnd);
     _video.dispose();
     _keyAnimation.dispose();
-    _bling.dispose().catchError((Object _) {});
+    for (final player in _blings) {
+      player.dispose().catchError((Object _) {});
+    }
     super.dispose();
   }
 
@@ -230,7 +249,7 @@ class _FourKeyDoorScreenState extends State<FourKeyDoorScreen>
                           scale: animating ? 1.25 - 0.25 * progress : 1,
                           child: Icon(
                             Icons.vpn_key_rounded,
-                            color: const Color(0xFFFFDE7C),
+                            color: color,
                             size: 32,
                             shadows: [
                               Shadow(

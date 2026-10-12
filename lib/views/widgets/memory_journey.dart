@@ -163,17 +163,6 @@ class _MemoryJourneyState extends State<MemoryJourney>
                         ],
                       ),
                     ),
-                    Text(
-                      _memories.isEmpty
-                          ? '00 / 00'
-                          : '${(_current + 1).toString().padLeft(2, '0')} / ${_memories.length.toString().padLeft(2, '0')}',
-                      key: const ValueKey('memory-counter'),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 1.4,
-                        color: _muted,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -237,25 +226,12 @@ class _MemoryJourneyState extends State<MemoryJourney>
                                     style: TextStyle(color: _ink),
                                   ),
                                 ),
-                              for (
-                                var i = math.min(
-                                  _memories.length - 1,
-                                  _current + 3,
-                                );
-                                i >= math.max(0, _current - 1);
-                                i--
-                              )
-                                if (i - _position > -1 && i - _position < 3.5)
-                                  if (_memories[_current].step != null &&
-                                      _memories[i].step != null &&
-                                      _memories[i].year ==
-                                          _memories[_current].year)
-                                    _photo(i, photoWidth, photoHeight, reduced),
-                              if (_memories.isNotEmpty)
-                                if (_memories[_current].step == null)
-                                  _chapter(reduced)
-                                else
-                                  _caption(box.maxHeight, photoHeight, reduced),
+                              ..._memoryLayers(
+                                box.maxHeight,
+                                photoWidth,
+                                photoHeight,
+                                reduced,
+                              ),
                             ],
                           ),
                         ),
@@ -332,42 +308,146 @@ class _MemoryJourneyState extends State<MemoryJourney>
     );
   }
 
-  Widget _chapter(bool reduced) {
-    final chapter = _memories[_current];
-    final distance = (_current - _position).abs();
+  // Both sides of chapter boundaries stay mounted through the whole blend.
+  // Position controls the blend directly, so releasing or reversing never jumps.
+  List<Widget> _memoryLayers(
+    double height,
+    double width,
+    double photoHeight,
+    bool reduced,
+  ) {
+    if (_memories.isEmpty) return [];
+    final lower = _position.floor();
+    final upper = math.min(lower + 1, _memories.length - 1);
+    final fraction = _position - lower;
+    final blend = Curves.easeInOutCubic.transform(fraction);
+    final boundary =
+        _memories[lower].step == null || _memories[upper].step == null;
+    if (boundary) {
+      return [
+        for (final index in {lower, upper}.where(
+          (i) => reduced
+              ? i == _current
+              : i == lower
+              ? blend < 1
+              : blend > 0,
+        ))
+          if (_memories[index].step != null)
+            _photo(
+              index,
+              width,
+              photoHeight,
+              reduced,
+              visibility: reduced
+                  ? (index == _current ? 1 : 0)
+                  : index == lower
+                  ? 1 - blend
+                  : blend,
+            ),
+        for (final index in {lower, upper}.where(
+          (i) => reduced
+              ? i == _current
+              : i == lower
+              ? blend < 1
+              : blend > 0,
+        ))
+          if (_memories[index].step == null)
+            _chapter(
+              index,
+              reduced
+                  ? (index == _current ? 1 : 0)
+                  : index == lower
+                  ? 1 - blend
+                  : blend,
+              reduced,
+            ),
+        for (final index in {lower, upper}.where(
+          (i) => reduced
+              ? i == _current
+              : i == lower
+              ? blend < 1
+              : blend > 0,
+        ))
+          if (_memories[index].step != null)
+            _caption(
+              height,
+              photoHeight,
+              reduced,
+              index: index,
+              visibility: reduced
+                  ? (index == _current ? 1 : 0)
+                  : index == lower
+                  ? 1 - blend
+                  : blend,
+            ),
+      ];
+    }
+    return [
+      for (
+        var i = math.min(_memories.length - 1, lower + 3);
+        i >= math.max(0, lower - 1);
+        i--
+      )
+        if (i - _position > -1 &&
+            i - _position < 3.5 &&
+            _memories[i].step != null &&
+            _memories[i].year == _memories[lower].year)
+          _photo(
+            i,
+            width,
+            photoHeight,
+            reduced,
+            stackReveal:
+                lower > 0 && _memories[lower - 1].step == null && i > lower
+                ? Curves.easeInOut.transform((fraction / .65).clamp(0.0, 1.0))
+                : 1,
+          ),
+      _caption(height, photoHeight, reduced),
+    ];
+  }
+
+  Widget _chapter(int index, double opacity, bool reduced) {
+    final chapter = _memories[index];
     return Center(
       child: Opacity(
-        opacity: reduced ? 1 : (1 - distance / .65).clamp(0.0, 1.0),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: SingleChildScrollView(
-            child: Column(
-              key: ValueKey('story-chapter-${chapter.year}'),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${chapter.year}年',
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 18,
-                    letterSpacing: 4,
+        opacity: opacity,
+        child: Transform.translate(
+          offset: reduced ? Offset.zero : Offset(0, (index - _position) * 18),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: SingleChildScrollView(
+              child: Column(
+                key: ValueKey('story-chapter-${chapter.year}'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${chapter.year}年',
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 18,
+                      letterSpacing: 4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Container(width: 36, height: 1, color: const Color(0xFFD5B9B6)),
-                const SizedBox(height: 20),
-                Text(
-                  chapter.title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: 2,
-                    height: 1.4,
+                  const SizedBox(height: 20),
+                  Container(
+                    width: 36,
+                    height: 1,
+                    color: const Color(0xFFD5B9B6),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  Text(
+                    chapter.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: 2,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -375,18 +455,34 @@ class _MemoryJourneyState extends State<MemoryJourney>
     );
   }
 
-  Widget _photo(int index, double width, double height, bool reduced) {
+  Widget _photo(
+    int index,
+    double width,
+    double height,
+    bool reduced, {
+    double? visibility,
+    double stackReveal = 1,
+  }) {
     final distance = index - _position;
-    final scale = reduced ? 1.0 : 1 / (1 + math.max(-.65, distance) * .85);
-    final opacity = reduced
-        ? (index == _current ? 1.0 : 0.0)
-        : (distance < 0 ? 1 + distance : 1 - distance * .26).clamp(0.0, 1.0);
+    final scale = reduced
+        ? 1.0
+        : visibility != null
+        ? 1 - .06 * math.max(0, distance)
+        : 1 / (1 + math.max(-.65, distance) * .85);
+    final opacity =
+        visibility ??
+        (reduced
+            ? (index == _current ? 1.0 : 0.0)
+            : (distance < 0 ? 1 + distance : 1 - distance * .26).clamp(
+                0.0,
+                1.0,
+              ));
     final image = _memories[index].step!.imageAsset;
     final video = _memories[index].step!.videoAsset;
     return Center(
       child: ExcludeSemantics(
         child: Opacity(
-          opacity: opacity,
+          opacity: opacity * stackReveal,
           child: Transform.translate(
             offset: reduced
                 ? Offset.zero
@@ -474,11 +570,19 @@ class _MemoryJourneyState extends State<MemoryJourney>
     ),
   );
 
-  Widget _caption(double height, double photoHeight, bool reduced) {
-    final memory = _memories[_current];
-    final distance = (_current - _position).abs();
-    final opacity = reduced ? 1.0 : (1 - distance / .65).clamp(0.0, 1.0);
-    final above = _current.isEven;
+  Widget _caption(
+    double height,
+    double photoHeight,
+    bool reduced, {
+    int? index,
+    double? visibility,
+  }) {
+    final selected = index ?? _current;
+    final memory = _memories[selected];
+    final distance = (selected - _position).abs();
+    final opacity =
+        visibility ?? (reduced ? 1.0 : (1 - distance / .65).clamp(0.0, 1.0));
+    final above = selected.isEven;
     final space = math.max(0.0, (height - photoHeight) / 2 - 14);
     return Positioned(
       left: 28,

@@ -32,15 +32,15 @@ enum FlowStep {
 
 const List<FlowStep> kFlowOrder = [
   FlowStep.diaryLoading,
-  FlowStep.diaryOpen,
-  FlowStep.storyRecap,
+  //FlowStep.diaryOpen,
+  //FlowStep.storyRecap,
   //FlowStep.giftIntro,
-  // FlowStep.gameHub,
-  FlowStep.fourKeyDoor,
-  FlowStep.doorOpening,
-  FlowStep.treasureHunt,
-  FlowStep.surpriseCountdown,
-  FlowStep.digitalCake,
+  //FlowStep.gameHub,
+  //FlowStep.fourKeyDoor,
+  //FlowStep.doorOpening,
+  //FlowStep.treasureHunt,
+  //FlowStep.surpriseCountdown,
+  //FlowStep.digitalCake,
   FlowStep.memoryFinale,
 ];
 

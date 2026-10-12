@@ -191,7 +191,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   }
 
   void _blowOutCandle() {
-    if (_blownOut || !_holdingBlow || !_micActive || !_cakeReady) return;
+    if (_blownOut || !_cakeReady) return;
     setState(() => _blownOut = true);
     HapticFeedback.mediumImpact();
     _releaseBlow();
@@ -239,7 +239,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
             setState(() => _cakeReady = true);
             _scheduleFinale();
           },
-          onCandleTap: () {},
+          onCandleTap: _blowOutCandle,
         ),
         IgnorePointer(
           child: SafeArea(

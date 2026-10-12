@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../config/treasure_hunt_config.dart';
 import 'treasure_scanner_screen.dart';
 import '../widgets/found_phone_frame.dart';
@@ -9,8 +10,15 @@ import '../widgets/found_phone_lock_screen.dart';
 import '../widgets/phone_floor_scene.dart';
 
 class TreasureHuntScreen extends StatefulWidget {
-  const TreasureHuntScreen({super.key, required this.onComplete});
+  const TreasureHuntScreen({
+    super.key,
+    required this.onComplete,
+    this.notificationPlayerFactory,
+    this.voicePlayerFactory,
+  });
   final VoidCallback onComplete;
+  final AudioPlayer Function()? notificationPlayerFactory;
+  final AudioPlayer Function()? voicePlayerFactory;
 
   @override
   State<TreasureHuntScreen> createState() => _TreasureHuntScreenState();
@@ -19,6 +27,8 @@ class TreasureHuntScreen extends StatefulWidget {
 class _TreasureHuntScreenState extends State<TreasureHuntScreen>
     with SingleTickerProviderStateMixin {
   AudioPlayer? _voicePlayer;
+  AudioPlayer? _notificationPlayer;
+  Future<void>? _notificationReady;
   AudioPlayer get _player => _voicePlayer ??= _createPlayer();
   Timer? _arrival;
   Timer? _secondVoiceArrival;
@@ -47,7 +57,7 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen>
   }
 
   AudioPlayer _createPlayer() {
-    final player = AudioPlayer();
+    final player = widget.voicePlayerFactory?.call() ?? AudioPlayer();
     _audioComplete = player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       final revealPhoto = _voiceIndex == 0 && !_photoArrived;
@@ -56,8 +66,11 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen>
         if (revealPhoto) _photoArrived = true;
       });
       if (revealPhoto) {
+        _notifyIncoming();
         _secondVoiceArrival = Timer(const Duration(milliseconds: 700), () {
-          if (mounted) setState(() => _secondVoiceArrived = true);
+          if (!mounted) return;
+          setState(() => _secondVoiceArrived = true);
+          _notifyIncoming();
         });
       }
     });
@@ -72,9 +85,35 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen>
   void _unlockPhone() {
     if (_unlocked) return;
     setState(() => _unlocked = true);
+    _notificationReady = _prepareNotification();
     _arrival = Timer(const Duration(milliseconds: 900), () {
-      if (mounted) setState(() => _voiceArrived = true);
+      if (!mounted) return;
+      setState(() => _voiceArrived = true);
+      _notifyIncoming();
     });
+  }
+
+  Future<void> _prepareNotification() async {
+    try {
+      final player = _notificationPlayer =
+          widget.notificationPlayerFactory?.call() ?? AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.stop);
+      if (!mounted) return;
+      await player.setVolume(.65);
+      await player.setSource(AssetSource('audio/phone_message.wav'));
+    } catch (error) {
+      debugPrint('Phone notification unavailable: $error');
+    }
+  }
+
+  Future<void> _notifyIncoming() async {
+    HapticFeedback.vibrate().catchError((Object _) {});
+    try {
+      await _notificationReady;
+      if (!mounted || _notificationPlayer == null) return;
+      await _notificationPlayer!.seek(Duration.zero);
+      await _notificationPlayer!.resume();
+    } catch (_) {}
   }
 
   Future<void> _playVoice([int index = 0]) async {
@@ -134,6 +173,7 @@ class _TreasureHuntScreenState extends State<TreasureHuntScreen>
     _secondVoiceArrival?.cancel();
     _audioComplete?.cancel();
     _voicePlayer?.dispose();
+    _notificationPlayer?.dispose().catchError((Object _) {});
     super.dispose();
   }
 

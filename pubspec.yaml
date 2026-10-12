@@ -44,6 +44,7 @@ dependencies:
   google_fonts: ^6.2.1
   audioplayers: ^6.1.0
   flame: ^1.38.2
+  wakelock_plus: 1.4.0
   
 dev_dependencies:
   qr: ^3.0.2
@@ -86,6 +87,7 @@ flutter:
     - assets/photos/story/2024/
     - assets/photos/story/2025/
     - assets/last_display_image/
+    - assets/memory_videos/
     - assets/music/
     - assets/audio/
     - assets/videos/diaryLoading.mp4

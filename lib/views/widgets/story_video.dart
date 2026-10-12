@@ -3,9 +3,17 @@ import 'package:video_player/video_player.dart';
 
 /// Only the selected memory plays; neighboring cards and background apps pause.
 class StoryVideo extends StatefulWidget {
-  const StoryVideo({super.key, required this.asset, required this.active});
+  const StoryVideo({
+    super.key,
+    required this.asset,
+    required this.active,
+    this.volume = 0,
+    this.showControls = false,
+  });
   final String asset;
   final bool active;
+  final double volume;
+  final bool showControls;
 
   @override
   State<StoryVideo> createState() => _StoryVideoState();
@@ -16,6 +24,7 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
   bool _ready = false;
   bool _failed = false;
   bool _foreground = true;
+  bool _manuallyPaused = false;
 
   @override
   void initState() {
@@ -30,7 +39,7 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
       await _controller.initialize();
       if (!mounted) return;
       await _controller.setLooping(true);
-      await _controller.setVolume(0);
+      await _controller.setVolume(widget.volume);
       if (!mounted) return;
       setState(() => _ready = true);
       _syncPlayback();
@@ -41,7 +50,7 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
 
   void _syncPlayback() {
     if (!_ready) return;
-    final operation = widget.active && _foreground
+    final operation = widget.active && _foreground && !_manuallyPaused
         ? _controller.play()
         : _controller.pause();
     operation.catchError((Object _) {
@@ -52,7 +61,10 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(StoryVideo oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.active != widget.active) _syncPlayback();
+    if (oldWidget.active != widget.active) {
+      if (widget.active) _manuallyPaused = false;
+      _syncPlayback();
+    }
   }
 
   @override
@@ -94,7 +106,28 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
         return SizedBox(
           width: fitted.width,
           height: fitted.height,
-          child: VideoPlayer(_controller),
+          child: widget.showControls
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    VideoPlayer(_controller),
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: IconButton.filledTonal(
+                        tooltip: _manuallyPaused ? '播放' : '暂停',
+                        onPressed: () {
+                          setState(() => _manuallyPaused = !_manuallyPaused);
+                          _syncPlayback();
+                        },
+                        icon: Icon(
+                          _manuallyPaused ? Icons.play_arrow : Icons.pause,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : VideoPlayer(_controller),
         );
       },
     );

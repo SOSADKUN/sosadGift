@@ -90,7 +90,7 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2024/3.jpg',
       ),
       StoryStep(
-        sentence: '但至少我觉得 我们当下在享受 所以没录那么多！ 但是 我们两 更近一步了！！ ',
+        sentence: '但至少我觉得 因为我们当下在享受 所以没记录那么多！ 而且 我们两 更近一步了！！ ',
         imageAsset: 'assets/photos/story/2024/4.jpg',
       ),
     ],
@@ -104,8 +104,20 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2025/1.jpg',
       ),
       StoryStep(
-        sentence: '黄金黄金 美照美照OwO 快乐快乐www',
+        sentence: '黄金黄金 O w O',
         imageAsset: 'assets/photos/story/2025/2.jpg',
+      ),
+      StoryStep(
+        sentence: '美人美人 O 3 O',
+        imageAsset: 'assets/photos/story/2025/3.jpg',
+      ),
+      StoryStep(
+        sentence: '美人与我 快乐快乐www',
+        imageAsset: 'assets/photos/story/2025/4.jpg',
+      ),
+      StoryStep(
+        sentence: '继续欣赏OWO',
+        imageAsset: 'assets/photos/story/2025/5.jpg',
       ),
     ],
   ),

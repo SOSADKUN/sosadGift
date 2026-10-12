@@ -1,6 +1,20 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+/// The candle stays on the rotation axis, so its hit target is camera-stable.
+Rect birthdayCandleHitRect(Size size) {
+  final scale = math.min(size.width / 365, size.height / 510) * .9;
+  double screenY(double y) =>
+      size.height * .53 + y * .82 * scale * 700 / (700 + y * .57);
+  final top = screenY(-144) - 24 * scale;
+  final bottom = screenY(-96);
+  return Rect.fromCenter(
+    center: Offset(size.width / 2, (top + bottom) / 2),
+    width: math.max(64, 52 * scale),
+    height: math.max(88, bottom - top + 24),
+  );
+}
+
 /// Procedural geometry only: orbiting digits assemble two cylindrical tiers.
 class BirthdayCinematicScene extends StatefulWidget {
   const BirthdayCinematicScene({
@@ -48,7 +62,17 @@ class _BirthdayCinematicSceneState extends State<BirthdayCinematicScene>
       builder: (context, _) => GestureDetector(
         key: const ValueKey('birthday-candle'),
         behavior: HitTestBehavior.opaque,
-        onTap: _formation.isCompleted ? widget.onCandleTap : null,
+        onTapUp: _formation.isCompleted && !widget.blownOut
+            ? (details) {
+                final size = context.size;
+                if (size != null &&
+                    birthdayCandleHitRect(
+                      size,
+                    ).contains(details.localPosition)) {
+                  widget.onCandleTap();
+                }
+              }
+            : null,
         child: CustomPaint(
           size: Size.infinite,
           painter: _CakePainter(
@@ -243,6 +267,9 @@ class _CakePainter extends CustomPainter {
     cylinder(faces, 78, -91, -7, const Color(0xFFFFE4EC), material);
     cylinder(faces, 120, -9, -2, const Color(0xFFFFF8F1), material);
     cylinder(faces, 80, -95, -88, const Color(0xFFFFF8F1), material);
+    cylinder(faces, 118.5, 68, 77, const Color(0xFFE4B6D9), material);
+    cylinder(faces, 78.5, -21, -13, const Color(0xFFECC2D9), material);
+    cylinder(faces, 137.5, 88, 91, const Color(0xFFF1D096), material);
     drawFaces(canvas, faces);
     // Hundreds of deterministic particles converge from helices to cake surfaces.
     final particles = <(_Point, int)>[];
@@ -300,6 +327,27 @@ class _CakePainter extends CustomPainter {
     final decoration = phase(.7, 1);
     // Piped cream beads and flowers attach to the rotating geometry.
     final flowers = <(_Point, int)>[];
+    for (final tier in [(119.0, 78.0), (79.0, -12.0)]) {
+      for (var i = 0; i < 55; i++) {
+        final a = i * math.pi * 2 / 55;
+        if (math.sin(a + angle) < 0) continue;
+        final pearl = project(
+          rotate(tier.$1 * math.cos(a), tier.$2, tier.$1 * math.sin(a)),
+        );
+        final rect = Rect.fromCircle(center: pearl, radius: 2.6 * scale);
+        canvas.drawOval(
+          rect,
+          Paint()
+            ..shader = RadialGradient(
+              center: const Alignment(-.4, -.4),
+              colors: [
+                alpha(Colors.white, decoration),
+                alpha(const Color(0xFFEACDD7), decoration),
+              ],
+            ).createShader(rect),
+        );
+      }
+    }
     for (final tier in [(118.0, -5.0, 82.0), (78.0, -91.0, -7.0)]) {
       for (var i = 0; i < 44; i++) {
         final a = i * math.pi * 2 / 44;

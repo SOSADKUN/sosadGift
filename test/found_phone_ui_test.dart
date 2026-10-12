@@ -1,4 +1,8 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
+import 'package:gift/config/treasure_hunt_config.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -8,6 +12,49 @@ import 'package:gift/views/screens/treasure_hunt_screen.dart';
 import 'package:gift/views/widgets/found_phone_frame.dart';
 import 'package:gift/views/widgets/found_phone_lock_screen.dart';
 import 'package:gift/views/widgets/phone_floor_scene.dart';
+
+class PhoneAudio implements AudioPlayer {
+  final complete = StreamController<void>.broadcast();
+  int plays = 0;
+  String? asset;
+  @override
+  PlayerState get state => PlayerState.stopped;
+  @override
+  Stream<void> get onPlayerComplete => complete.stream;
+  @override
+  Future<void> setReleaseMode(ReleaseMode mode) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> setSource(Source source) async {
+    asset = (source as AssetSource).path;
+  }
+
+  @override
+  Future<void> seek(Duration position) async {}
+  @override
+  Future<void> resume() async {
+    plays++;
+  }
+
+  @override
+  Future<void> play(
+    Source source, {
+    double? volume,
+    double? balance,
+    AudioContext? ctx,
+    Duration? position,
+    PlayerMode? mode,
+  }) async {
+    asset = (source as AssetSource).path;
+    plays++;
+  }
+
+  @override
+  Future<void> dispose() => complete.close();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 Widget phone(VoidCallback unlocked) => MaterialApp(
   home: Scaffold(
@@ -45,10 +92,34 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final boundary = GlobalKey();
+    final notifications = PhoneAudio();
+    final voice = PhoneAudio();
+    var vibrations = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate' && call.arguments == null) {
+          vibrations++;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     await tester.pumpWidget(
       RepaintBoundary(
         key: boundary,
-        child: MaterialApp(home: TreasureHuntScreen(onComplete: () {})),
+        child: MaterialApp(
+          home: TreasureHuntScreen(
+            onComplete: () {},
+            notificationPlayerFactory: () => notifications,
+            voicePlayerFactory: () => voice,
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -83,6 +154,36 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const ValueKey('hunt-voice-0')), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pump();
+    await tester.pump();
+    expect(notifications.plays, 1);
+    expect(vibrations, 1);
+    await tester.tap(find.byKey(const ValueKey('hunt-voice-0')));
+    await tester.pump();
+    expect(voice.asset, TreasureHuntConfig.voiceAssets[0]);
+    voice.complete.add(null);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(notifications.plays, 2);
+    expect(vibrations, 2);
+    expect(find.byKey(const ValueKey('hunt-voice-1')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('hunt-voice-1')), findsOneWidget);
+    await tester.pump();
+    await tester.pump();
+    expect(notifications.plays, 3);
+    expect(vibrations, 3);
+    await tester.tap(find.byKey(const ValueKey('hunt-voice-1')));
+    await tester.pump();
+    expect(voice.asset, TreasureHuntConfig.voiceAssets[1]);
+    voice.complete.add(null);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    await tester.pump();
+    expect(notifications.plays, 3);
     if (Platform.environment['CAPTURE_PHONE_PREVIEWS'] == '1') {
       await tester.runAsync(() async {
         final render =

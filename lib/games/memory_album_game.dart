@@ -6,14 +6,31 @@ import 'package:flutter/services.dart';
 import '../config/memory_display_config.dart';
 import 'memory_float_pose.dart';
 
-/// Continuous atmosphere, three foreground photos and three small backdrop photos.
+class _Backdrop {
+  _Backdrop(this.index, this.elapsed);
+  int index;
+  double elapsed;
+  ui.Image? image;
+  ui.Image? next;
+  int? nextIndex;
+  Future<void>? loading;
+}
+
+/// Continuous atmosphere, three foreground photos and six small backdrop photos.
 class MemoryAlbumGame extends FlameGame {
-  MemoryAlbumGame({required this.photos, required this.onProgress});
+  MemoryAlbumGame({
+    required this.photos,
+    required this.onProgress,
+    math.Random? random,
+  }) : _random = random ?? math.Random();
   final List<String> photos;
   final void Function(int index, double progress) onProgress;
   final Map<int, ui.Image> _images = {};
   final Set<int> _failed = {};
-  final List<ui.Image> _backgroundPhotos = [];
+  final List<_Backdrop> _backgroundPhotos = [];
+  final math.Random _random;
+  final List<int> _backgroundBag = [];
+  static const _backgroundDuration = 24.0;
   final Map<int, Future<void>> _pending = {};
   int _index = 0;
   double _cycle = 0;
@@ -25,10 +42,25 @@ class MemoryAlbumGame extends FlameGame {
   int get currentIndex => _index;
   double get elapsedAtmosphere => _time;
   int get decodedPhotoCount => _images.length;
+  @visibleForTesting
+  List<int> get backgroundIndices =>
+      _backgroundPhotos.map((slot) => slot.index).toList();
+  @visibleForTesting
+  int get decodedBackgroundCount => _backgroundPhotos.fold(
+    0,
+    (count, slot) =>
+        count + (slot.image == null ? 0 : 1) + (slot.next == null ? 0 : 1),
+  );
 
   @visibleForTesting
   Future<void> waitForPreload() async {
     await Future.wait(_pending.values.toList());
+    await Future.wait(
+      _backgroundPhotos
+          .map((slot) => slot.loading)
+          .whereType<Future<void>>()
+          .toList(),
+    );
   }
 
   @override
@@ -38,28 +70,92 @@ class MemoryAlbumGame extends FlameGame {
   Future<void> onLoad() async {
     if (photos.isEmpty) return;
     await _load(0);
-    for (var i = 0; i < math.min(3, photos.length); i++) {
-      ui.Codec? codec;
-      try {
-        final path = photos[(i * photos.length ~/ 3) % photos.length];
-        final data = await rootBundle.load(path);
-        codec = await ui.instantiateImageCodec(
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-          targetWidth: 220,
-        );
-        final frame = await codec.getNextFrame();
-        if (_disposed) {
-          frame.image.dispose();
-          return;
-        }
-        _backgroundPhotos.add(frame.image);
-      } catch (_) {
-        // A missing background photo does not interrupt the foreground album.
-      } finally {
-        codec?.dispose();
+    final count = math.min(6, photos.length);
+    for (var i = 0; i < count; i++) {
+      _backgroundPhotos.add(
+        _Backdrop(_pickBackground(), i * _backgroundDuration / count),
+      );
+    }
+    await Future.wait(
+      _backgroundPhotos.map((slot) async {
+        slot.image = await _decodeBackdrop(slot.index);
+      }),
+    );
+    _preload();
+  }
+
+  Future<ui.Image?> _decodeBackdrop(int index) async {
+    ui.Codec? codec;
+    try {
+      final data = await rootBundle.load(photos[index]);
+      codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        targetWidth: 220,
+      );
+      final image = (await codec.getNextFrame()).image;
+      if (_disposed) {
+        image.dispose();
+        return null;
+      }
+      return image;
+    } catch (_) {
+      return null;
+    } finally {
+      codec?.dispose();
+    }
+  }
+
+  int _pickBackground() {
+    final occupied = <int>{
+      for (final slot in _backgroundPhotos) slot.index,
+      for (final slot in _backgroundPhotos)
+        if (slot.nextIndex != null) slot.nextIndex!,
+    };
+    if (_backgroundBag.isEmpty || _backgroundBag.every(occupied.contains)) {
+      _backgroundBag
+        ..clear()
+        ..addAll(List.generate(photos.length, (i) => i)..shuffle(_random));
+    }
+    final candidate = _backgroundBag.indexWhere((i) => !occupied.contains(i));
+    // Small albums may already occupy every slot; reuse a photo gracefully.
+    return _backgroundBag.removeAt(candidate < 0 ? 0 : candidate);
+  }
+
+  void _prepareBackdrop(_Backdrop slot) {
+    if (slot.loading != null || slot.nextIndex != null) return;
+    final index = _pickBackground();
+    slot.nextIndex = index;
+    slot.loading = _decodeBackdrop(index)
+        .then((image) {
+          if (_disposed) {
+            image?.dispose();
+            return;
+          }
+          slot.next = image;
+        })
+        .whenComplete(() => slot.loading = null);
+  }
+
+  void _updateBackdrops(double dt) {
+    if (reducedMotion) return;
+    for (final slot in _backgroundPhotos) {
+      slot.elapsed += dt;
+      // Decode the replacement while the current photo is still leaving.
+      if (slot.elapsed >= _backgroundDuration * .7) _prepareBackdrop(slot);
+      if (slot.elapsed >= _backgroundDuration &&
+          slot.loading == null &&
+          slot.nextIndex != null) {
+        // Both endpoints are outside the viewport, including rotated corners.
+        slot.image?.dispose();
+        slot.image = slot.next;
+        slot.index = slot.nextIndex!;
+        slot.next = null;
+        slot.nextIndex = null;
+        slot.elapsed = 0;
+      } else if (slot.elapsed > _backgroundDuration) {
+        slot.elapsed = _backgroundDuration;
       }
     }
-    _preload();
   }
 
   Future<void> _load(int index) {
@@ -121,6 +217,7 @@ class MemoryAlbumGame extends FlameGame {
     super.update(dt);
     if (photos.isEmpty || _disposed) return;
     _time += dt;
+    _updateBackdrops(dt);
     _cycle += dt;
     final duration = MemoryDisplayConfig.photoDuration.inMilliseconds / 1000;
     if (_cycle >= duration) {
@@ -182,9 +279,12 @@ class MemoryAlbumGame extends FlameGame {
     }
     // Separate low-resolution photos keep drifting across foreground changes.
     for (var i = 0; i < _backgroundPhotos.length; i++) {
-      final image = _backgroundPhotos[i];
-      final x = size.x * (.5 + .44 * math.sin(phase * .055 + i * 2.1));
-      final y = size.y * (.5 + .35 * math.cos(phase * .037 + i * 2.7));
+      final slot = _backgroundPhotos[i];
+      final image = slot.image;
+      if (image == null) continue;
+      final t = slot.elapsed / _backgroundDuration;
+      final x = size.x * (.5 + .38 * math.sin(t * math.pi * 1.2 + i * 2.1));
+      final y = size.y * (1.35 - 1.7 * t);
       final fitted = applyBoxFit(
         BoxFit.contain,
         Size(image.width.toDouble(), image.height.toDouble()),
@@ -200,14 +300,14 @@ class MemoryAlbumGame extends FlameGame {
       canvas.rotate(.18 * math.sin(phase * .04 + i));
       canvas.drawRect(
         rect.inflate(5),
-        Paint()..color = const Color(0xFFF5EDE3).withValues(alpha: .18),
+        Paint()..color = const Color(0xFFF5EDE3).withValues(alpha: .14),
       );
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         rect,
         Paint()
-          ..color = Colors.white.withValues(alpha: .18)
+          ..color = Colors.white.withValues(alpha: .14)
           ..filterQuality = FilterQuality.low,
       );
       canvas.restore();
@@ -273,8 +373,9 @@ class MemoryAlbumGame extends FlameGame {
       image.dispose();
     }
     _images.clear();
-    for (final image in _backgroundPhotos) {
-      image.dispose();
+    for (final slot in _backgroundPhotos) {
+      slot.image?.dispose();
+      slot.next?.dispose();
     }
     _backgroundPhotos.clear();
     super.onRemove();

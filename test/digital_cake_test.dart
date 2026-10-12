@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gift/config/treasure_hunt_config.dart';
 import 'package:gift/views/screens/digital_cake_screen.dart';
+import 'package:gift/views/widgets/birthday_cinematic_scene.dart';
 
 class BirthdayPlayer implements AudioPlayer {
   final completed = StreamController<void>.broadcast();
@@ -167,6 +168,48 @@ void main() {
     expect(advances, 1);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'only the finished candle can be tapped; fireworks finish before advancing',
+    (tester) async {
+      final player = BirthdayPlayer();
+      var advances = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DigitalCakeScreen(
+            birthdayPlayer: player,
+            fireworksPlayer: BirthdayPlayer(),
+            onComplete: () => advances++,
+          ),
+        ),
+      );
+      await tester.pump();
+      final area = tester.getRect(
+        find.byKey(const ValueKey('birthday-candle')),
+      );
+      final candle = area.topLeft + birthdayCandleHitRect(area.size).center;
+      await tester.tapAt(candle);
+      await tester.pump();
+      expect(find.text('生日快乐！！！'), findsNothing);
+      await revealCake(tester);
+      await tester.tapAt(area.center);
+      await tester.pump();
+      expect(find.text('生日快乐！！！'), findsNothing);
+      player.completed.add(null);
+      await tester.pump();
+      await tester.tapAt(candle);
+      await tester.pump();
+      expect(find.text('生日快乐！！！'), findsOneWidget);
+      expect(advances, 0);
+      await tester.tapAt(candle);
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 5900));
+      expect(advances, 0);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(advances, 1);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('audio failure offers retry and never skips the cake', (
     tester,

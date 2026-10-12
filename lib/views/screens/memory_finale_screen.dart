@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../config/memory_display_config.dart';
 import '../../games/memory_album_game.dart';
+import '../widgets/heart_gesture_portal.dart';
+import 'video_memory_screen.dart';
 export '../../games/memory_float_pose.dart';
 
 class MemoryFinaleScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   int _photoCount = 0;
   bool _loading = true;
   bool _active = true;
+  bool _videoMenuOpen = false;
 
   @override
   void initState() {
@@ -49,7 +52,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
               ..sort();
       }
       final album = MemoryAlbumGame(photos: photos, onProgress: (_, _) {});
-      if (!_active) album.pauseEngine();
+      if (!_active || _videoMenuOpen) album.pauseEngine();
       setState(() {
         _album = album;
         _photoCount = photos.length;
@@ -71,19 +74,41 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
       await _music.setReleaseMode(ReleaseMode.loop);
       if (!mounted) return;
       await _music.play(AssetSource(track), volume: .5);
-      if (!_active) await _music.pause();
+      if (!_active || _videoMenuOpen) await _music.pause();
     } catch (_) {}
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _active = state == AppLifecycleState.resumed;
-    if (_active) {
+    if (_active && !_videoMenuOpen) {
       _album?.resumeEngine();
       _music.resume().catchError((Object _) {});
     } else {
       _album?.pauseEngine();
       _music.pause().catchError((Object _) {});
+    }
+  }
+
+  Future<void> _openVideos() async {
+    if (_videoMenuOpen || !_active) return;
+    _videoMenuOpen = true;
+    _album?.pauseEngine();
+    HapticFeedback.mediumImpact();
+    try {
+      await _music.pause();
+    } catch (_) {}
+    if (!mounted) return;
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const VideoMemoryScreen()),
+      );
+    } finally {
+      _videoMenuOpen = false;
+      if (mounted && _active) {
+        _album?.resumeEngine();
+        _music.resume().catchError((Object _) {});
+      }
     }
   }
 
@@ -99,75 +124,78 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     _album?.reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Scaffold(
       backgroundColor: const Color(0xFF100D19),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFECD2A4)),
-            )
-          : _photoCount == 0
-          ? const Center(
-              child: Text(
-                '属于我们的回忆 ♡',
-                style: TextStyle(color: Color(0xFFECD2A4)),
-              ),
-            )
-          : Stack(
-              fit: StackFit.expand,
-              children: [
-                GameWidget(game: _album!),
-                IgnorePointer(
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 24,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'OUR INFINITE LITTLE UNIVERSE',
-                            style: TextStyle(
-                              color: Color(0xFFD3BBA9),
-                              fontSize: 9,
-                              letterSpacing: 2.8,
+      body: HeartGesturePortal(
+        onHeart: _openVideos,
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFFECD2A4)),
+              )
+            : _photoCount == 0
+            ? const Center(
+                child: Text(
+                  '属于我们的回忆 ♡',
+                  style: TextStyle(color: Color(0xFFECD2A4)),
+                ),
+              )
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  GameWidget(game: _album!),
+                  IgnorePointer(
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'OUR INFINITE LITTLE UNIVERSE',
+                              style: TextStyle(
+                                color: Color(0xFFD3BBA9),
+                                fontSize: 9,
+                                letterSpacing: 2.8,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 9),
-                          const Text(
-                            '属于我们的回忆',
-                            style: TextStyle(
-                              color: Color(0xFFF7E9DE),
-                              fontSize: 19,
-                              fontWeight: FontWeight.w300,
-                              letterSpacing: 3,
+                            const SizedBox(height: 9),
+                            const Text(
+                              '属于我们的回忆',
+                              style: TextStyle(
+                                color: Color(0xFFF7E9DE),
+                                fontSize: 19,
+                                fontWeight: FontWeight.w300,
+                                letterSpacing: 3,
+                              ),
                             ),
-                          ),
-                          const Spacer(),
-                          const Text(
-                            '有些瞬间，值得一再停留。',
-                            style: TextStyle(
-                              color: Color(0xFFF7E9DE),
-                              fontSize: 17,
-                              letterSpacing: 1.5,
-                              fontFamily: 'serif',
+                            const Spacer(),
+                            const Text(
+                              '属于我们的每个瞬间',
+                              style: TextStyle(
+                                color: Color(0xFFF7E9DE),
+                                fontSize: 17,
+                                letterSpacing: 1.5,
+                                fontFamily: 'serif',
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'WITH YOU, ALWAYS',
-                            style: TextStyle(
-                              color: Color(0xFFB6A0AB),
-                              fontSize: 9,
-                              letterSpacing: 1.5,
+                            const SizedBox(height: 14),
+                            const Text(
+                              'WITH YOU, ALWAYS',
+                              style: TextStyle(
+                                color: Color(0xFFB6A0AB),
+                                fontSize: 9,
+                                letterSpacing: 1.5,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 }
