@@ -112,12 +112,16 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2025/3.jpg',
       ),
       StoryStep(
-        sentence: '美人与我 快乐快乐www',
+        sentence: '忧郁女神 但还是那么漂酿',
         imageAsset: 'assets/photos/story/2025/4.jpg',
       ),
       StoryStep(
-        sentence: '继续欣赏OWO',
+        sentence: '继续欣赏美人 OWO',
         imageAsset: 'assets/photos/story/2025/5.jpg',
+      ),
+      StoryStep(
+        sentence: '可爱！！！！',
+        imageAsset: 'assets/photos/story/2025/6.jpg',
       ),
     ],
   ),
