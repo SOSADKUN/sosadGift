@@ -7,6 +7,9 @@ import 'animated_game_assets.dart';
 
 /// Flame owns the maze's drawing, sprite animation, movement and camera easing.
 class MazeGame extends FlameGame {
+  // Leave one input tick for the final rendered frame to settle.
+  static const moveRepeatInterval = Duration(milliseconds: 176);
+  static const _moveSeconds = .16;
   MazeGame({
     required List<String> rows,
     required Offset player,
@@ -57,6 +60,7 @@ class MazeGame extends FlameGame {
   double _cell = 48;
   int facingRow = 0;
   int facingCol = -1;
+  bool _facesRight = false;
   bool cameraTour = false;
   bool lookAtStart = false;
   bool lookAtGoal = false;
@@ -70,7 +74,14 @@ class MazeGame extends FlameGame {
   double get worldWidth => _rows.isEmpty ? 0 : _rows.first.length * _cell;
   double get worldHeight => _rows.length * _cell;
   double get cellSize => _cell;
-  bool get moving => _moveTime < .14;
+  bool get moving => _moveTime < _moveSeconds;
+
+  /// Vertical travel retains the last horizontal facing; the bear stays upright.
+  bool get playerFacesRight => _facesRight;
+
+  double get playerBob => reducedMotion || !moving
+      ? 0
+      : sin((_moveTime / _moveSeconds).clamp(0.0, 1.0) * pi) * _cell * .02;
 
   void setScene({
     required List<String> rows,
@@ -180,7 +191,8 @@ class MazeGame extends FlameGame {
     super.update(dt);
     final step = min(dt, .2);
     _phase += step;
-    _walker?.update(step);
+    if (facingCol != 0) _facesRight = facingCol > 0;
+    if (moving && !reducedMotion) _walker?.update(step);
     _heart?.update(step);
     _bombSprite?.update(step);
     _explosionSprite?.update(step);
@@ -189,7 +201,7 @@ class MazeGame extends FlameGame {
     _moveTime += step;
     final progress = reducedMotion
         ? 1.0
-        : Curves.easeOutCubic.transform((_moveTime / .14).clamp(0.0, 1.0));
+        : (_moveTime / _moveSeconds).clamp(0.0, 1.0);
     _player = Offset.lerp(_from, _destination, progress)!;
     final target = _cameraTarget;
     if (cameraTour) {
@@ -305,14 +317,10 @@ class MazeGame extends FlameGame {
     );
     canvas.save();
     canvas.translate(playerCenter.dx, playerCenter.dy);
-    if (facingCol == 1) canvas.scale(-1, 1);
-    if (facingRow != 0) canvas.rotate(facingRow < 0 ? pi / 2 : -pi / 2);
-    final bob = reducedMotion || !moving
-        ? 0.0
-        : sin(_moveTime / .14 * pi) * _cell * .035;
+    if (playerFacesRight) canvas.scale(-1, 1);
     _walker?.getSprite().render(
       canvas,
-      position: Vector2(-_cell * .4, -_cell * .4 - bob),
+      position: Vector2(-_cell * .4, -_cell * .4 - playerBob),
       size: Vector2.all(_cell * .8),
     );
     canvas.restore();

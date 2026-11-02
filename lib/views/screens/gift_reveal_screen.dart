@@ -33,7 +33,7 @@ class _GiftRevealScreenState extends State<GiftRevealScreen> {
                         border: Border.all(color: Colors.amber, width: 2),
                       ),
                       child: const Text(
-                        '🎟️ 礼物券\n\nTODO: 写上你想给的礼物内容',
+                        '🎟️ 礼物券\n\nTODO: 写上妳想给的礼物内容',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 18),
                       ),

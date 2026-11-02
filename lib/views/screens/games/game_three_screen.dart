@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../widgets/game_audio_scope.dart';
 import '../../../games/game_timer.dart';
 import 'package:flame/game.dart';
 import '../../../games/maze_game.dart';
@@ -236,6 +237,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       setState(() => _message = '木板挡住了！拿炸弹，靠近木板放下。');
       return;
     }
+    GameAudioScope.effect(context, GameSound.step);
     HapticFeedback.selectionClick();
     setState(() {
       _playerRow = newRow;
@@ -253,6 +255,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   }
 
   void _fleeGoal() {
+    GameAudioScope.effect(context, GameSound.escape);
     _holdTimer?.cancel();
     HapticFeedback.heavyImpact();
     _messageTimer?.cancel();
@@ -314,6 +317,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   }
 
   void _fail() {
+    GameAudioScope.effect(context, GameSound.fail);
     _fuse?.cancel();
     _holdTimer?.cancel();
     _clock?.cancel();
@@ -327,6 +331,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   }
 
   void _levelClear() {
+    GameAudioScope.effect(context, GameSound.win);
     _holdTimer?.cancel();
     _finished = true;
     _won = true;
@@ -354,6 +359,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
         _distance(_playerCell, _bombPickup!) > 1) {
       return;
     }
+    GameAudioScope.effect(context, GameSound.pickup);
     setState(() {
       _bombPickup = null;
       _carryingBomb = true;
@@ -370,6 +376,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
         _distance(_playerCell, _board!) != 1) {
       return;
     }
+    GameAudioScope.effect(context, GameSound.plant);
     setState(() {
       _carryingBomb = false;
       _plantedBomb = _playerCell;
@@ -384,6 +391,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       setState(() => _bombSeconds--);
       if (_bombSeconds > 0) return;
       timer.cancel();
+      GameAudioScope.effect(context, GameSound.boom);
       _field.explode(_plantedBomb!);
       HapticFeedback.heavyImpact();
       setState(() {
@@ -405,7 +413,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     void move() =>
         _move(_stickDirection.dy.toInt(), _stickDirection.dx.toInt());
     move();
-    _holdTimer = _repeat(const Duration(milliseconds: 170), (_) => move());
+    _holdTimer = _repeat(MazeGame.moveRepeatInterval, (_) => move());
   }
 
   void _syncField() {

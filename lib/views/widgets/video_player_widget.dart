@@ -9,6 +9,7 @@ class VideoPlayerWidget extends StatefulWidget {
   final bool showTapToSkip;
   final bool landscape;
   final bool paused;
+  final bool mixWithOthers;
 
   /// Show the entire frame within the phone's safe area from this timestamp.
   final Duration? containFrom;
@@ -22,6 +23,7 @@ class VideoPlayerWidget extends StatefulWidget {
     this.showTapToSkip = true,
     this.landscape = false,
     this.paused = false,
+    this.mixWithOthers = false,
     this.containFrom,
     this.containedBackgroundColor = Colors.black,
   });
@@ -49,13 +51,19 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
 
-    _controller = VideoPlayerController.asset(widget.assetPath)
-      ..initialize().then((_) {
-        if (!mounted) return;
-        setState(() => _ready = true);
-        _controller.setLooping(widget.loop);
-        if (!widget.paused) _controller.play();
-      });
+    _controller =
+        VideoPlayerController.asset(
+            widget.assetPath,
+            videoPlayerOptions: VideoPlayerOptions(
+              mixWithOthers: widget.mixWithOthers,
+            ),
+          )
+          ..initialize().then((_) {
+            if (!mounted) return;
+            setState(() => _ready = true);
+            _controller.setLooping(widget.loop);
+            if (!widget.paused) _controller.play();
+          });
 
     _controller.addListener(_checkFinished);
   }

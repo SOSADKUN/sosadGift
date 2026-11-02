@@ -1,7 +1,5 @@
 abstract final class MemoryDisplayConfig {
   static const photoDirectory = 'assets/last_display_image/';
-  static const musicAsset = 'music/memory_bgm.mp3';
-  static const fallbackMusic = 'audio/memory_piano.wav';
   static const photoDuration = Duration(seconds: 5);
 
   static List<String> orderedPhotos(Iterable<String> assets) {

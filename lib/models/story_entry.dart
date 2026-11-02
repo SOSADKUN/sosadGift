@@ -1,10 +1,21 @@
 class StoryStep {
   final String sentence;
   final String? imageAsset;
+  final List<String>? imageAssets;
   final String? videoAsset;
 
-  const StoryStep({required this.sentence, this.imageAsset, this.videoAsset})
-    : assert(imageAsset == null || videoAsset == null);
+  const StoryStep({
+    required this.sentence,
+    this.imageAsset,
+    this.imageAssets,
+    this.videoAsset,
+  }) : assert(imageAsset == null || imageAssets == null),
+       assert(
+         videoAsset == null || (imageAsset == null && imageAssets == null),
+       );
+
+  List<String> get photos =>
+      imageAsset == null ? imageAssets ?? const [] : [imageAsset!];
 }
 
 class StoryEntry {
@@ -26,23 +37,27 @@ final List<StoryEntry> kStoryEntries = [
     title: '原神启动',
     steps: [
       StoryStep(
-        sentence: '刚刚的开头放原神启动～其实是因为 我觉得原神是我们相遇的契机w！',
+        sentence: '刚刚的开头放原神启动～其实是因为我认为！ 原神是我们相遇的契机w！',
         imageAsset: 'assets/photos/story/2022/1.jpg',
       ),
       StoryStep(
-        sentence: '我们真正的开始 是从这个story reply开始的哈哈哈哈 也是因为domino和原神联动ww',
+        sentence: '我们真正的开始 是从这个story reply开始的哈哈哈哈 ',
         imageAsset: 'assets/photos/story/2022/2.jpg',
+      ),
+      StoryStep(
+        sentence: '也是因为domino和原神联动ww(bukan pizzahut!!',
+        imageAsset: 'assets/photos/story/2022/2.1.jpg',
       ),
       StoryStep(
         sentence: '当年我们聊了好多原神话题 那年的我们 还只是网友关系',
         videoAsset: 'assets/photos/story/2022/3.mp4',
       ),
       StoryStep(
-        sentence: '所以你的生日 我只能从原神里送一个小小的礼物了www',
+        sentence: '所以妳的生日 我只能从原神里送一个小小的礼物了www',
         imageAsset: 'assets/photos/story/2022/5.jpg',
       ),
       StoryStep(
-        sentence: '你看你 当时收到20块的月卡 居然就说爱我来钓我www！',
+        sentence: '妳看妳 当时收到20块的月卡 居然就说爱我来钓我www！',
         imageAsset: 'assets/photos/story/2022/4.jpg',
       ),
     ],
@@ -52,19 +67,19 @@ final List<StoryEntry> kStoryEntries = [
     title: '香水一日游',
     steps: [
       StoryStep(
-        sentence: '送香水给你之前 其实也是偷之前信息的idea www',
+        sentence: '送香水给妳之前 其实也是偷之前信息的idea www',
         imageAsset: 'assets/photos/story/2023/1.jpg',
       ),
       StoryStep(
-        sentence: ' 直接去puchong找你的我 的却考虑得不周到wwww 但我第一次那么大胆诶！',
+        sentence: ' 直接去puchong找妳的我 的却考虑得不周到wwww 但我第一次那么大胆诶！',
         imageAsset: 'assets/photos/story/2023/2.jpg',
       ),
       StoryStep(
-        sentence: '看回去依旧感觉如此不真实 我真的 很喜欢看到你开心的样子w',
+        sentence: '看回去依旧感觉如此不真实 我真的 很喜欢看到妳开心的样子w',
         imageAsset: 'assets/photos/story/2023/3.jpg',
       ),
       StoryStep(
-        sentence: '然后哦我其实很怕我送的东西 你已经买了噗哈哈哈哈',
+        sentence: '然后哦我其实很怕我送的东西 妳已经买了噗哈哈哈哈',
         imageAsset: 'assets/photos/story/2023/4.jpg',
       ),
     ],
@@ -74,19 +89,19 @@ final List<StoryEntry> kStoryEntries = [
     title: '翻版MUAJI噗',
     steps: [
       StoryStep(
-        sentence: '这一年吼 你真的很大胆！ 怎么可以随便跟一个男人出来住酒店',
+        sentence: '这一年吼 妳真的很大胆！ 怎么可以随便跟一个男人出来住酒店',
         imageAsset: 'assets/photos/story/2024/1.jpg',
       ),
       StoryStep(
-        sentence: '这年礼物送了个超级不像仓鼠的muaji 但是花了好多钱钱的！（后面的花朵还是你教我买的wwww ',
+        sentence: '这年礼物送了个超级不像仓鼠的muaji 但是花了好多钱钱的！（后面的花朵还是妳教我买的wwww ',
         imageAsset: 'assets/photos/story/2024/2.jpg',
       ),
       StoryStep(
-        sentence: '为了跟商家沟通 我偷了很多照片！！！但我还是有下心思derrQwQ 所以你只能虚心接受了哈哈哈哈哈',
+        sentence: '为了跟商家沟通 我偷了很多照片！！！但我还是有下心思derrQwQ 所以妳只能虚心接受了哈哈哈哈哈',
         imageAsset: 'assets/photos/story/2024/2.5.jpg',
       ),
       StoryStep(
-        sentence: '这一年生日 我记得你都还要做工QwQ 但是没有照片可以记录噗 放一张同款房型纪念w ',
+        sentence: '这一年生日 我记得妳都还要做工QwQ 但是没有照片可以记录噗 放一张同款房型纪念w ',
         imageAsset: 'assets/photos/story/2024/3.jpg',
       ),
       StoryStep(
@@ -100,15 +115,15 @@ final List<StoryEntry> kStoryEntries = [
     title: 'PortDickson 之旅',
     steps: [
       StoryStep(
-        sentence: '我的两天一夜成名作w',
+        sentence: '我的两天一夜成名作w 也是我们的PD之旅',
         imageAsset: 'assets/photos/story/2025/1.jpg',
       ),
       StoryStep(
-        sentence: '黄金黄金 O w O',
+        sentence: '黄金黄金 O w O， 这是我第一次送人黄金喔！',
         imageAsset: 'assets/photos/story/2025/2.jpg',
       ),
       StoryStep(
-        sentence: '美人美人 O 3 O',
+      sentence: '不好吃的下午high tea～ 但是有美人配美景 养眼OwO',
         imageAsset: 'assets/photos/story/2025/3.jpg',
       ),
       StoryStep(
@@ -120,7 +135,7 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2025/5.jpg',
       ),
       StoryStep(
-        sentence: '可爱！！！！',
+        sentence: '好可爱！！！！',
         imageAsset: 'assets/photos/story/2025/6.jpg',
       ),
     ],

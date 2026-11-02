@@ -58,9 +58,14 @@ void main() {
           steps: [StoryStep(sentence: 'Second photo')],
         ),
       ];
+      final musicChapters = <String>[];
       await tester.pumpWidget(
         MaterialApp(
-          home: MemoryJourney(entries: chapters, onComplete: () {}),
+          home: MemoryJourney(
+            entries: chapters,
+            onComplete: () {},
+            onChapterChanged: musicChapters.add,
+          ),
         ),
       );
       expect(find.text('2022年'), findsOneWidget);
@@ -74,6 +79,7 @@ void main() {
       await tester.pump();
       expect(find.text('2023年'), findsOneWidget);
       expect(find.text('香水味～'), findsOneWidget);
+      expect(musicChapters.last, '2023');
       expect(find.byKey(const ValueKey('memory-photo-3')), findsNothing);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();

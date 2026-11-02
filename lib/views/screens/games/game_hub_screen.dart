@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../widgets/video_player_widget.dart';
+import '../../widgets/game_audio_scope.dart';
 import 'game_one_screen.dart';
 import 'game_two_screen.dart';
 import 'game_three_screen.dart';
@@ -18,6 +19,7 @@ class GameHubScreen extends StatefulWidget {
 }
 
 class _GameHubScreenState extends State<GameHubScreen> {
+  final _audio = GameAudio('audio/game_hub.wav');
   // Add/remove games here — one door per entry, in door order
   // [top-left, top-right, bottom-left, bottom-right].
   late final List<
@@ -57,22 +59,36 @@ class _GameHubScreenState extends State<GameHubScreen> {
   Timer? _moodTimer;
   bool _showCompletionPopup = false;
   bool _continuing = false;
+  bool _openingGame = false;
 
   void _openGame(int index) async {
-    if (_solved.contains(index)) return;
+    if (_solved.contains(index) || _openingGame) return;
+    _openingGame = true;
 
     final showIntro = !_instructionsShown.contains(index);
     _instructionsShown.add(index);
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _games[index](
-          () => _completeGame(index),
-          () => _loseGame(index),
-          showIntro,
-        ),
-      ),
+    final gameAudio = GameAudio(
+      'audio/game_${['feather', 'memory', 'maze', 'mole'][index]}.wav',
     );
+    _audio.setPaused(true);
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => GameAudioScope(
+            audio: gameAudio,
+            child: _games[index](
+              () => _completeGame(index),
+              () => _loseGame(index),
+              showIntro,
+            ),
+          ),
+        ),
+      );
+    } finally {
+      _openingGame = false;
+      if (mounted) _audio.setPaused(false);
+    }
   }
 
   void _completeGame(int index) {
@@ -107,189 +123,193 @@ class _GameHubScreenState extends State<GameHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Background + door art both come from the video.
-        Positioned.fill(
-          child: VideoPlayerWidget(
-            assetPath: 'assets/videos/gameHub.mp4',
-            loop: true,
-            showTapToSkip: false,
-            paused: _showCompletionPopup,
-          ),
-        ),
-
-        SafeArea(
-          child: Column(
-            children: [
-              Align(
-                alignment: Alignment.topCenter,
-                child: Container(
-                  margin: const EdgeInsets.only(top: 10),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.vpn_key_rounded,
-                        color: Colors.amberAccent,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '钥匙 ${_solved.length} / ${_games.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cellWidth = constraints.maxWidth * 0.48;
-                    final cellHeight = constraints.maxHeight * 0.46;
-                    return Stack(
-                      children: [
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _HubCharacter(
-                                winCount: _solved.length,
-                                mood: _mood,
-                              ),
-                              const _SpeechBubble(text: '点击门口进入游戏哦～'),
-                            ],
-                          ),
-                        ),
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          width: cellWidth,
-                          height: cellHeight,
-                          child: _GameDoorHotspot(
-                            solved: _solved.contains(0),
-                            onTap: () => _openGame(0),
-                          ),
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          width: cellWidth,
-                          height: cellHeight,
-                          child: _GameDoorHotspot(
-                            solved: _solved.contains(1),
-                            onTap: () => _openGame(1),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          width: cellWidth,
-                          height: cellHeight,
-                          child: _GameDoorHotspot(
-                            solved: _solved.contains(2),
-                            onTap: () => _openGame(2),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          width: cellWidth,
-                          height: cellHeight,
-                          child: _GameDoorHotspot(
-                            solved: _solved.contains(3),
-                            onTap: () => _openGame(3),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_showCompletionPopup)
+    return GameAudioScope(
+      audio: _audio,
+      child: Stack(
+        children: [
+          // Background + door art both come from the video.
           Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                if (_continuing) return;
-                _continuing = true;
-                widget.onAllGamesComplete();
-              },
-              child: ColoredBox(
-                color: const Color(0xB9000010),
-                child: Center(
+            child: VideoPlayerWidget(
+              assetPath: 'assets/videos/gameHub.mp4',
+              mixWithOthers: true,
+              loop: true,
+              showTapToSkip: false,
+              paused: _showCompletionPopup,
+            ),
+          ),
+
+          SafeArea(
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20),
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF5EB),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: const Color(0xFFFFD398),
-                        width: 2,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black45, blurRadius: 25),
-                      ],
+                    margin: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
                     ),
-                    child: Column(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Image.asset(
-                              'assets/photos/game4_2.gif',
-                              width: 90,
-                              height: 90,
-                            ),
-                            const SizedBox(width: 12),
-                            const Flexible(
-                              child: Text(
-                                '恭喜你！\n四把钥匙都收集齐了 ✨',
-                                style: TextStyle(
-                                  color: Color(0xFF744158),
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
+                        const Icon(
+                          Icons.vpn_key_rounded,
+                          color: Colors.amberAccent,
+                          size: 16,
                         ),
-                        const SizedBox(height: 14),
-                        const Text(
-                          '点击屏幕，前往最后一道门',
-                          style: TextStyle(
-                            color: Color(0xFF9E6876),
-                            fontSize: 14,
+                        const SizedBox(width: 6),
+                        Text(
+                          '钥匙 ${_solved.length} / ${_games.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cellWidth = constraints.maxWidth * 0.48;
+                      final cellHeight = constraints.maxHeight * 0.46;
+                      return Stack(
+                        children: [
+                          Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _HubCharacter(
+                                  winCount: _solved.length,
+                                  mood: _mood,
+                                ),
+                                const _SpeechBubble(text: '点击门口进入游戏哦～'),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            width: cellWidth,
+                            height: cellHeight,
+                            child: _GameDoorHotspot(
+                              solved: _solved.contains(0),
+                              onTap: () => _openGame(0),
+                            ),
+                          ),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            width: cellWidth,
+                            height: cellHeight,
+                            child: _GameDoorHotspot(
+                              solved: _solved.contains(1),
+                              onTap: () => _openGame(1),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            width: cellWidth,
+                            height: cellHeight,
+                            child: _GameDoorHotspot(
+                              solved: _solved.contains(2),
+                              onTap: () => _openGame(2),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            width: cellWidth,
+                            height: cellHeight,
+                            child: _GameDoorHotspot(
+                              solved: _solved.contains(3),
+                              onTap: () => _openGame(3),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_showCompletionPopup)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (_continuing) return;
+                  _continuing = true;
+                  widget.onAllGamesComplete();
+                },
+                child: ColoredBox(
+                  color: const Color(0xB9000010),
+                  child: Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF5EB),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: const Color(0xFFFFD398),
+                          width: 2,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black45, blurRadius: 25),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.asset(
+                                'assets/photos/game4_2.gif',
+                                width: 90,
+                                height: 90,
+                              ),
+                              const SizedBox(width: 12),
+                              const Flexible(
+                                child: Text(
+                                  '恭喜妳！\n四把钥匙都收集齐了 ✨',
+                                  style: TextStyle(
+                                    color: Color(0xFF744158),
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            '点击屏幕，前往最后一道门',
+                            style: TextStyle(
+                              color: Color(0xFF9E6876),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

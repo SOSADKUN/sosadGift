@@ -17,7 +17,7 @@ class _TreasureScannerScreenState extends State<TreasureScannerScreen> {
   final _controller = MobileScannerController(formats: [BarcodeFormat.qrCode]);
   bool _handled = false;
   bool _takingPhoto = false;
-  String _hint = '对准你在现实中找到的最后一个二维码';
+  String _hint = '对准妳在现实中找到的最后一个二维码';
 
   void _detect(BarcodeCapture capture) {
     if (!mounted || _handled || _takingPhoto) return;

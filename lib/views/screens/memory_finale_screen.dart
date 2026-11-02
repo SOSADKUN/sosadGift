@@ -1,4 +1,5 @@
-import 'package:audioplayers/audioplayers.dart';
+import 'dart:async';
+import '../../services/fading_music.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,7 +18,10 @@ class MemoryFinaleScreen extends StatefulWidget {
 
 class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     with WidgetsBindingObserver {
-  final _music = AudioPlayer();
+  final _music = FadingMusic();
+  StreamSubscription<void>? _completion;
+  List<String> _tracks = [];
+  int _trackIndex = 0;
   MemoryAlbumGame? _album;
   int _photoCount = 0;
   bool _loading = true;
@@ -51,6 +55,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
                 .toList()
               ..sort();
       }
+      photos.shuffle();
       final album = MemoryAlbumGame(photos: photos, onProgress: (_, _) {});
       if (!_active || _videoMenuOpen) album.pauseEngine();
       setState(() {
@@ -64,18 +69,26 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   }
 
   Future<void> _playMusic() async {
-    var track = MemoryDisplayConfig.musicAsset;
-    try {
-      await rootBundle.load('assets/$track');
-    } catch (_) {
-      track = MemoryDisplayConfig.fallbackMusic;
-    }
-    try {
-      await _music.setReleaseMode(ReleaseMode.loop);
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    if (!mounted) return;
+    _tracks =
+        manifest
+            .listAssets()
+            .where(
+              (path) => RegExp(
+                r'^assets/music/last_display_music[1-9][0-9]*\.mp3$',
+              ).hasMatch(path),
+            )
+            .toList()
+          ..sort();
+    if (_tracks.isEmpty) return;
+    _completion = _music.onComplete.listen((_) {
       if (!mounted) return;
-      await _music.play(AssetSource(track), volume: .5);
-      if (!_active || _videoMenuOpen) await _music.pause();
-    } catch (_) {}
+      _trackIndex = (_trackIndex + 1) % _tracks.length;
+      _music.play(_tracks[_trackIndex].substring(7), loop: false);
+    });
+    _music.setPaused(!_active || _videoMenuOpen);
+    await _music.play(_tracks.first.substring(7), loop: false);
   }
 
   @override
@@ -83,10 +96,10 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     _active = state == AppLifecycleState.resumed;
     if (_active && !_videoMenuOpen) {
       _album?.resumeEngine();
-      _music.resume().catchError((Object _) {});
+      _music.setPaused(false);
     } else {
       _album?.pauseEngine();
-      _music.pause().catchError((Object _) {});
+      _music.setPaused(true);
     }
   }
 
@@ -96,7 +109,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     _album?.pauseEngine();
     HapticFeedback.mediumImpact();
     try {
-      await _music.pause();
+      _music.setPaused(true);
     } catch (_) {}
     if (!mounted) return;
     try {
@@ -107,7 +120,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
       _videoMenuOpen = false;
       if (mounted && _active) {
         _album?.resumeEngine();
-        _music.resume().catchError((Object _) {});
+        _music.setPaused(false);
       }
     }
   }
@@ -115,7 +128,8 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _music.dispose().catchError((Object _) {});
+    _completion?.cancel();
+    _music.dispose();
     super.dispose();
   }
 

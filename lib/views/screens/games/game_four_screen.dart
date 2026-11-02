@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../widgets/game_audio_scope.dart';
 import '../../../games/game_timer.dart';
 import 'package:flame/game.dart';
 import '../../../games/mole_game.dart';
@@ -174,6 +175,7 @@ class _GameFourScreenState extends State<GameFourScreen>
     setState(() => _holes[index] = null);
 
     if (item.kind == _HoleKind.clickable) {
+      GameAudioScope.effect(context, GameSound.hit);
       HapticFeedback.lightImpact();
       setState(() => _score++);
       if (_score >= _goal) _levelClear();
@@ -183,6 +185,7 @@ class _GameFourScreenState extends State<GameFourScreen>
   }
 
   void _hitBomb() {
+    GameAudioScope.effect(context, GameSound.boom);
     _finished = true;
     _spawnTimer?.cancel();
     _clock?.cancel();
@@ -204,6 +207,7 @@ class _GameFourScreenState extends State<GameFourScreen>
   }
 
   void _fail() {
+    GameAudioScope.effect(context, GameSound.fail);
     _finished = true;
     _spawnTimer?.cancel();
     _clock?.cancel();
@@ -217,6 +221,7 @@ class _GameFourScreenState extends State<GameFourScreen>
   }
 
   void _levelClear() {
+    GameAudioScope.effect(context, GameSound.win);
     _finished = true;
     _won = true;
     _spawnTimer?.cancel();

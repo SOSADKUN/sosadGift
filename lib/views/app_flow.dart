@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/diary_loading_screen.dart';
+import 'screens/splash_screen.dart';
 import 'screens/diary_open_screen.dart';
 import 'screens/story_recap_screen.dart';
 import 'screens/gift_intro_screen.dart';
@@ -15,6 +16,7 @@ import 'screens/surprise_countdown_screen.dart';
 import 'screens/memory_finale_screen.dart';
 
 enum FlowStep {
+  splash,
   diaryLoading, // mp4 1: loading screen
   diaryOpen, // mp4 2: diary opens
   storyRecap, // 4-year story: 认识/驾车/bhotel/PD
@@ -31,6 +33,7 @@ enum FlowStep {
 }
 
 const List<FlowStep> kFlowOrder = [
+  FlowStep.splash,
   FlowStep.diaryLoading,
   FlowStep.diaryOpen,
   FlowStep.storyRecap,
@@ -62,6 +65,8 @@ class _AppFlowState extends State<AppFlow> {
 
   Widget _build(FlowStep step) {
     switch (step) {
+      case FlowStep.splash:
+        return SplashScreen(onComplete: _next);
       case FlowStep.diaryLoading:
         return DiaryLoadingScreen(onComplete: _next);
       case FlowStep.diaryOpen:

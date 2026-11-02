@@ -64,7 +64,7 @@ void main() {
       expect(game.lookAtStart, isFalse);
       expect(find.text(clockBefore!), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 1850));
-      expect(find.text('回到你这里，出发追回它吧！'), findsNothing);
+      expect(find.text('回到妳这里，出发追回它吧！'), findsNothing);
       await tester.pump(const Duration(seconds: 1));
       expect(find.text(clockBefore), findsNothing);
       expect(tester.takeException(), isNull);

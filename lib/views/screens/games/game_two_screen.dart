@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../widgets/game_audio_scope.dart';
 import '../../../games/game_timer.dart';
 import 'package:flame/game.dart';
 import '../../../games/memory_pad_game.dart';
@@ -139,6 +140,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
         });
         return;
       }
+      GameAudioScope.effect(context, GameSound.pad(_sequence[step]));
       setState(() => _activePad = _sequence[step]);
       _playTimer = _delay(_showDuration, () {
         if (!mounted) return;
@@ -153,6 +155,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
 
   void _tapPad(int index) {
     if (!_fieldReady || _paused || _showingSequence || _finished) return;
+    GameAudioScope.effect(context, GameSound.pad(index));
     HapticFeedback.selectionClick();
     if (_sequence[_inputIndex] != index) {
       _fail();
@@ -179,6 +182,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
   }
 
   void _fail() {
+    GameAudioScope.effect(context, GameSound.fail);
     _playTimer?.cancel();
     _nextRoundTimer?.cancel();
     _padTimer?.cancel();
@@ -190,6 +194,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
   }
 
   void _levelClear() {
+    GameAudioScope.effect(context, GameSound.win);
     _playTimer?.cancel();
     _nextRoundTimer?.cancel();
     _padTimer?.cancel();
@@ -229,7 +234,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
               children: [
                 const SizedBox(height: 10),
                 Text(
-                  _showingSequence ? '仔细看好顺序～' : '轮到你啦，跟着点一遍',
+                  _showingSequence ? '仔细看好顺序～' : '轮到妳啦，跟着点一遍',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -288,7 +293,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
           GameIntroOverlay(
             title: '心动记忆',
             instructionText:
-                '看好卡片亮起的顺序\n轮到你时，按同样的顺序点一遍\n每过一关顺序会变长一点，坚持到第 5 关就赢啦～',
+                '看好卡片亮起的顺序\n轮到妳时，按同样的顺序点一遍\n每过一关顺序会变长一点，坚持到第 5 关就赢啦～',
             onStart: _onIntroStart,
           ),
       ],

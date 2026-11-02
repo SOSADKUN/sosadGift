@@ -177,7 +177,7 @@ class _FoundPhoneLockScreenState extends State<FoundPhoneLockScreen>
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '一段未读的故事，正在等你。',
+                  '一段未读的故事，正在等妳。',
                   style: TextStyle(
                     color: Colors.white38,
                     fontSize: 11,

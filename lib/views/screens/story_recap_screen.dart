@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../../models/story_entry.dart';
+import '../../services/fading_music.dart';
 import '../widgets/memory_journey.dart';
 
-/// Music accompanies the reversible photo journey.
+/// Music follows the chapter in either direction through the photo journey.
 class StoryRecapScreen extends StatefulWidget {
   final VoidCallback onComplete;
 
@@ -13,34 +13,52 @@ class StoryRecapScreen extends StatefulWidget {
   State<StoryRecapScreen> createState() => _StoryRecapScreenState();
 }
 
-class _StoryRecapScreenState extends State<StoryRecapScreen> {
-  final _player = AudioPlayer();
+class _StoryRecapScreenState extends State<StoryRecapScreen>
+    with WidgetsBindingObserver {
+  final _music = FadingMusic();
+  bool _completing = false;
 
   @override
   void initState() {
     super.initState();
-    _playMusic();
+    WidgetsBinding.instance.addObserver(this);
+    _changeChapter(kStoryEntries.first.year);
   }
 
-  Future<void> _playMusic() async {
-    try {
-      await _player.setReleaseMode(ReleaseMode.loop);
-      // Drop your track at assets/audio/story_recap_bgm.mp3 and register it
-      // under pubspec.yaml's `assets:` list — playback picks it up as-is.
-      await _player.play(AssetSource('audio/story_recap_bgm.mp3'), volume: 0.5);
-    } catch (_) {
-      // No track yet — screen still works silently without music.
+  void _changeChapter(String year) {
+    if (_completing) return;
+    final index = kStoryEntries.indexWhere((entry) => entry.year == year);
+    if (index >= 0) {
+      _music.play(
+        'music/story${index + 1}.mp3',
+        startPosition: index == 3 ? const Duration(seconds: 15) : Duration.zero,
+      );
     }
+  }
+
+  Future<void> _complete() async {
+    if (_completing) return;
+    _completing = true;
+    await _music.stop();
+    if (mounted) widget.onComplete();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _music.setPaused(state != AppLifecycleState.resumed);
   }
 
   @override
   void dispose() {
-    _player.stop();
-    _player.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _music.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) =>
-      MemoryJourney(entries: kStoryEntries, onComplete: widget.onComplete);
+  Widget build(BuildContext context) => MemoryJourney(
+    entries: kStoryEntries,
+    onChapterChanged: _changeChapter,
+    onComplete: _complete,
+  );
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../widgets/game_audio_scope.dart';
 import 'dart:math';
 import 'package:flame/game.dart';
 import '../../../games/feather_game.dart';
@@ -130,6 +131,7 @@ class _GameOneScreenState extends State<GameOneScreen>
       return;
     }
     _game.targetVisible = false;
+    GameAudioScope.effect(context, GameSound.catchTarget);
     HapticFeedback.lightImpact();
     setState(() {
       _count++;
@@ -155,6 +157,7 @@ class _GameOneScreenState extends State<GameOneScreen>
       _finished = true;
       _visible = false;
     });
+    GameAudioScope.effect(context, won ? GameSound.win : GameSound.fail);
     if (won) HapticFeedback.mediumImpact();
   }
 

@@ -148,7 +148,7 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
             const Icon(Icons.auto_awesome, color: Color(0xFFECD2A4), size: 40),
             const SizedBox(height: 24),
             const Text(
-              '恭喜你完成小游戏 居然解密成功了',
+              '恭喜妳完成小游戏 居然解密成功了',
               style: TextStyle(color: Colors.white, fontSize: 24),
             ),
             const SizedBox(height: 16),

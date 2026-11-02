@@ -210,7 +210,7 @@ class _PhoneFloorSceneState extends State<PhoneFloorScene>
                           ? _card(
                               key: const ValueKey('phone-discovered'),
                               title: '原来是一部手机。',
-                              subtitle: '你捡起了一部手机。\n屏幕里，似乎藏着一段未读的故事。',
+                              subtitle: '妳捡起了一部手机。\n屏幕里，似乎藏着一段未读的故事。',
                               action: '打开手机',
                               onTap: _open,
                             )

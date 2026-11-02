@@ -135,7 +135,7 @@ void main() {
     await walkNearPhone(tester);
     await tester.tap(find.text('捡起'));
     await tester.pump(const Duration(milliseconds: 700));
-    expect(find.text('你捡起了一部手机。\n屏幕里，似乎藏着一段未读的故事。'), findsOneWidget);
+    expect(find.text('妳捡起了一部手机。\n屏幕里，似乎藏着一段未读的故事。'), findsOneWidget);
     expect(find.text('输入密码'), findsNothing);
     await tester.tap(find.text('打开手机'));
     await tester.pump(const Duration(milliseconds: 700));

@@ -13,10 +13,12 @@ class MemoryJourney extends StatefulWidget {
     super.key,
     required this.entries,
     required this.onComplete,
+    this.onChapterChanged,
   });
 
   final List<StoryEntry> entries;
   final VoidCallback onComplete;
+  final ValueChanged<String>? onChapterChanged;
 
   @override
   State<MemoryJourney> createState() => _MemoryJourneyState();
@@ -77,6 +79,13 @@ class _MemoryJourneyState extends State<MemoryJourney>
       _stop();
     } else {
       setState(() => _position = next);
+      _notifyChapter();
+    }
+  }
+
+  void _notifyChapter() {
+    if (_memories.isNotEmpty) {
+      widget.onChapterChanged?.call(_memories[_current].year);
     }
   }
 
@@ -105,6 +114,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
     setState(
       () => _position = (_current + direction).clamp(0.0, _end).toDouble(),
     );
+    _notifyChapter();
   }
 
   @override
@@ -477,7 +487,7 @@ class _MemoryJourneyState extends State<MemoryJourney>
                 0.0,
                 1.0,
               ));
-    final image = _memories[index].step!.imageAsset;
+    final images = _memories[index].step!.photos;
     final video = _memories[index].step!.videoAsset;
     return Center(
       child: ExcludeSemantics(
@@ -519,20 +529,37 @@ class _MemoryJourneyState extends State<MemoryJourney>
                             asset: video,
                             active: index == _current && _direction == 0,
                           )
-                        : image == null
+                        : images.isEmpty
                         ? SizedBox(
                             width: width - 18,
                             height: height - 33,
                             child: _placeholder(index),
                           )
-                        : Image.asset(
-                            image,
-                            fit: BoxFit.contain,
-                            gaplessPlayback: true,
-                            errorBuilder: (_, error, stack) => SizedBox(
-                              width: width - 18,
-                              height: height - 33,
-                              child: _placeholder(index),
+                        : images.length == 1
+                        ? _storyPhoto(
+                            images.single,
+                            index,
+                            width - 18,
+                            height - 33,
+                          )
+                        : SizedBox(
+                            width: width - 18,
+                            height: height - 33,
+                            child: Column(
+                              children: [
+                                for (var i = 0; i < images.length; i++) ...[
+                                  if (i > 0) const SizedBox(height: 8),
+                                  Expanded(
+                                    child: _storyPhoto(
+                                      images[i],
+                                      index,
+                                      width - 18,
+                                      (height - 33 - 8 * (images.length - 1)) /
+                                          images.length,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                   ),
@@ -544,6 +571,15 @@ class _MemoryJourneyState extends State<MemoryJourney>
       ),
     );
   }
+
+  Widget _storyPhoto(String asset, int index, double width, double height) =>
+      Image.asset(
+        asset,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (_, error, stack) =>
+            SizedBox(width: width, height: height, child: _placeholder(index)),
+      );
 
   Widget _placeholder(int index) => DecoratedBox(
     decoration: BoxDecoration(

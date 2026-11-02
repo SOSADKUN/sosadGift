@@ -30,7 +30,11 @@ class _StoryVideoState extends State<StoryVideo> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller = VideoPlayerController.asset(widget.asset);
+    _controller = VideoPlayerController.asset(
+      widget.asset,
+      // Preloaded, muted story clips must not take audio focus from the BGM.
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _initialize();
   }
 
