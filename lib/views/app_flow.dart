@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import '../services/finale_music.dart';
+import '../controllers/app_flow_progress.dart';
+import '../services/game_audio.dart';
+import '../config/game_hub_music_config.dart';
+import 'dart:async';
 
 import 'screens/diary_loading_screen.dart';
 import 'screens/splash_screen.dart';
@@ -55,44 +60,70 @@ class AppFlow extends StatefulWidget {
 }
 
 class _AppFlowState extends State<AppFlow> {
-  int _index = 0;
+  final _progress = AppFlowProgress(kFlowOrder);
+  int get _index => _progress.index;
+  final _finaleMusic = FinaleMusic();
+  final _hubAudio = GameAudio(
+    GameHubMusicConfig.asset,
+    musicVolume: GameHubMusicConfig.volume,
+  );
 
-  void _next() {
-    if (_index < kFlowOrder.length - 1) {
-      setState(() => _index++);
-    }
+  @override
+  void dispose() {
+    _finaleMusic.dispose();
+    unawaited(_hubAudio.dispose());
+    super.dispose();
+  }
+
+  void _next(FlowStep source) {
+    if (!mounted || !_progress.complete(source)) return;
+    if (source == FlowStep.gameHub) unawaited(_hubAudio.dispose());
+    setState(() {});
   }
 
   Widget _build(FlowStep step) {
     switch (step) {
       case FlowStep.splash:
-        return SplashScreen(onComplete: _next);
+        return SplashScreen(onComplete: () => _next(step));
       case FlowStep.diaryLoading:
-        return DiaryLoadingScreen(onComplete: _next);
+        return DiaryLoadingScreen(onComplete: () => _next(step));
       case FlowStep.diaryOpen:
-        return DiaryOpenScreen(onComplete: _next);
+        return DiaryOpenScreen(onComplete: () => _next(step));
       case FlowStep.storyRecap:
-        return StoryRecapScreen(onComplete: _next);
+        return StoryRecapScreen(onComplete: () => _next(step));
       case FlowStep.giftIntro:
-        return GiftIntroScreen(onComplete: _next);
+        return GiftIntroScreen(
+          onComplete: () => _next(step),
+          audio: _hubAudio,
+          chorusStart: GameHubMusicConfig.chorusStart,
+        );
       case FlowStep.gameHub:
-        return GameHubScreen(onAllGamesComplete: _next);
+        return GameHubScreen(
+          onAllGamesComplete: () => _next(step),
+          audio: _hubAudio,
+        );
       case FlowStep.fourKeyDoor:
-        return FourKeyDoorScreen(onComplete: _next);
+        return FourKeyDoorScreen(onComplete: () => _next(step));
       case FlowStep.doorOpening:
-        return DoorOpeningScreen(onComplete: _next);
+        return DoorOpeningScreen(onComplete: () => _next(step));
       case FlowStep.treasureHunt:
-        return TreasureHuntScreen(onComplete: _next);
+        return TreasureHuntScreen(onComplete: () => _next(step));
       case FlowStep.surpriseCountdown:
-        return SurpriseCountdownScreen(onComplete: _next);
+        return SurpriseCountdownScreen(onComplete: () => _next(step));
       case FlowStep.password:
-        return PasswordScreen(correctCode: '0917', onCorrect: _next);
+        return PasswordScreen(
+          correctCode: '0917',
+          onCorrect: () => _next(step),
+        );
       case FlowStep.giftReveal:
-        return GiftRevealScreen(onComplete: _next);
+        return GiftRevealScreen(onComplete: () => _next(step));
       case FlowStep.digitalCake:
-        return DigitalCakeScreen(onComplete: _next);
+        return DigitalCakeScreen(
+          onComplete: () => _next(step),
+          finaleMusic: _finaleMusic,
+        );
       case FlowStep.memoryFinale:
-        return const MemoryFinaleScreen();
+        return MemoryFinaleScreen(music: _finaleMusic);
     }
   }
 
@@ -110,10 +141,10 @@ class _AppFlowState extends State<AppFlow> {
             ? 0
             : reducedMotion
             ? 200
+            : enteringHub
+            ? 1000
             : enteringDiary
             ? 1800
-            : enteringHub
-            ? 1400
             : 350,
       ),
       switchInCurve: Curves.easeInOutCubic,
@@ -144,12 +175,17 @@ class _AppFlowState extends State<AppFlow> {
         if (!enteringHub || reducedMotion) return fade;
         final isHub =
             child.key == ValueKey(kFlowOrder.indexOf(FlowStep.gameHub));
-        return ScaleTransition(
-          scale: Tween<double>(
-            begin: isHub ? 1.08 : 1.15,
-            end: 1,
+        if (!isHub) return fade;
+        // Gently reveal the lobby on the chorus without restarting its audio.
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, .018),
+            end: Offset.zero,
           ).animate(animation),
-          child: fade,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 1.025, end: 1).animate(animation),
+            child: fade,
+          ),
         );
       },
       child: Container(

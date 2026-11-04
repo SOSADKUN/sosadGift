@@ -8,7 +8,8 @@ import 'package:gift/views/widgets/game_failure_overlay.dart';
 import 'package:gift/views/widgets/explosion_overlay.dart';
 
 Offset stick(WidgetTester tester) =>
-    tester.getCenter(find.byKey(const ValueKey('maze-joystick')));
+    tester.getCenter(find.byKey(const ValueKey('maze-right'))) -
+    const Offset(36, 0);
 
 Future<void> finishTour(WidgetTester tester) async {
   for (var i = 0; i < 310; i++) {
@@ -38,15 +39,17 @@ void main() {
       });
       await tester.pump();
       await finishTour(tester);
-      const arrows = {
-        'R': Offset(36, 0),
-        'L': Offset(-36, 0),
-        'U': Offset(0, -36),
-        'D': Offset(0, 36),
-      };
       for (final step in pathToGoal(kMazeVariants.first)..removeLast()) {
-        await tester.tapAt(stick(tester) + arrows[step]!);
-        await tester.pump(const Duration(milliseconds: 160));
+        await tester.tapAt(
+          tester.getCenter(
+            find.byKey(
+              ValueKey(
+                'maze-${{'R': 'right', 'L': 'left', 'U': 'up', 'D': 'down'}[step]}',
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
       }
       expect(find.text('它跑回起点啦！跟着镜头看看～'), findsOneWidget);
       final clockBefore = tester
@@ -56,15 +59,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 220));
       expect(game.lookAtStart, isTrue);
       final playerBefore = game.playerPosition;
-      await tester.tapAt(stick(tester) + const Offset(-36, 0));
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const ValueKey('maze-left'))),
+      );
       await tester.pump(const Duration(milliseconds: 1400));
       expect(game.lookAtStart, isTrue);
       expect(game.playerPosition, playerBefore);
       await tester.pump(const Duration(milliseconds: 1250));
       expect(game.lookAtStart, isFalse);
       expect(find.text(clockBefore!), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 1850));
-      expect(find.text('回到妳这里，出发追回它吧！'), findsNothing);
+      expect(game.cameraTour, isTrue);
+      for (var i = 0; i < 650; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(game.cameraTour, isFalse);
       await tester.pump(const Duration(seconds: 1));
       expect(find.text(clockBefore), findsNothing);
       expect(tester.takeException(), isNull);

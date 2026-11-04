@@ -1,8 +1,34 @@
+import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gift/config/treasure_hunt_config.dart';
 import 'package:gift/views/app_flow.dart';
 import 'package:gift/views/screens/surprise_countdown_screen.dart';
+
+class FlowCountdownPlayer implements AudioPlayer {
+  @override
+  Future<void> stop() async {}
+  final _done = StreamController<void>.broadcast();
+  @override
+  Stream<void> get onPlayerComplete => _done.stream;
+  @override
+  Future<void> setReleaseMode(ReleaseMode mode) async {}
+  @override
+  Future<void> setAudioContext(AudioContext ctx) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> setSource(Source source) async {}
+  @override
+  Future<void> resume() async => _done.add(null);
+  @override
+  Future<void> seek(Duration position) async {}
+  @override
+  Future<void> dispose() => _done.close();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   test('hunt and countdown must precede cake after opening the door', () {
@@ -22,7 +48,7 @@ void main() {
     expect(TreasureHuntConfig.acceptsQr('https://example.com'), isFalse);
   });
 
-  testWidgets('countdown completes once, only after thirty seconds', (
+  testWidgets('countdown completes once, only after sixty seconds', (
     tester,
   ) async {
     var now = DateTime(2026);
@@ -31,17 +57,19 @@ void main() {
       MaterialApp(
         home: SurpriseCountdownScreen(
           now: () => now,
+          audioPlayerFactory: FlowCountdownPlayer.new,
           onComplete: () => completed++,
         ),
       ),
     );
-    expect(find.text('30'), findsOneWidget);
-    now = now.add(const Duration(seconds: 29));
+    expect(find.text('60'), findsOneWidget);
+    now = now.add(const Duration(seconds: 59));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('1'), findsOneWidget);
     expect(completed, 0);
     now = now.add(const Duration(seconds: 1));
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
     expect(completed, 1);
     await tester.pump(const Duration(seconds: 5));
     expect(completed, 1);
@@ -55,6 +83,7 @@ void main() {
       MaterialApp(
         home: SurpriseCountdownScreen(
           now: () => now,
+          audioPlayerFactory: FlowCountdownPlayer.new,
           onComplete: () => completed++,
         ),
       ),

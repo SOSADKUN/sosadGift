@@ -34,12 +34,14 @@ class GameFourScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
   final bool showIntro;
+  final bool countdownOnly;
 
   const GameFourScreen({
     super.key,
     required this.onComplete,
     required this.onLose,
     this.showIntro = false,
+    this.countdownOnly = false,
   });
 
   @override
@@ -75,6 +77,7 @@ class _GameFourScreenState extends State<GameFourScreen>
   bool _failedByBomb = false;
   bool _claimed = false;
   late bool _introDone;
+  late bool _countdownOnly;
 
   Timer _delay(Duration duration, void Function() callback) =>
       GameTimer(duration, callback, isPaused: () => _paused);
@@ -101,8 +104,18 @@ class _GameFourScreenState extends State<GameFourScreen>
       onReady: _onFieldReady,
     );
     _introDone = !widget.showIntro;
+    _countdownOnly = widget.countdownOnly;
     _holes = List.filled(_holeCount, null);
     _hideTimers = List.filled(_holeCount, null);
+  }
+
+  void _retryCountdown() {
+    setState(() {
+      _finished = false;
+      _failedByBomb = false;
+      _introDone = false;
+      _countdownOnly = true;
+    });
   }
 
   void _onIntroStart() {
@@ -328,7 +341,7 @@ class _GameFourScreenState extends State<GameFourScreen>
         if (_failedByBomb)
           GameFailureOverlay(
             title: _message ?? '呀，点到炸弹啦！',
-            onRetry: _startLevel,
+            onRetry: _retryCountdown,
             onExit: widget.onLose,
           ),
         if (_won)
@@ -381,6 +394,7 @@ class _GameFourScreenState extends State<GameFourScreen>
           ),
         if (!_introDone)
           GameIntroOverlay(
+            countdownOnly: _countdownOnly,
             title: '点击布布',
             instructionText:
                 '布布会从格子里探出头来，快点点它们攒钥匙\n千万别点到炸弹，一点到就会失败哦\n$_timeLimit 秒内集满 $_goal 个布布就能拿到钥匙～',

@@ -20,16 +20,23 @@ class SurpriseCountdownScreen extends StatefulWidget {
 
 class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
     with WidgetsBindingObserver {
+  static final _audioContext = AudioContext(
+    android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+    iOS: AudioContextIOS(options: {AVAudioSessionOptions.mixWithOthers}),
+  );
   late final DateTime _deadline;
   Timer? _timer;
-  int _seconds = 30;
+  static const _durationSeconds = 60;
+  int _seconds = _durationSeconds;
   bool _completed = false;
-  bool _ending = false;
-  bool _greetingDone = false;
+
   bool _active = true;
+  int? _lastBeep;
+  late final AudioPlayer _beep;
+  late final Future<void> _beepReady;
+  late final Map<int, AudioPlayer> _voices;
+  late final Map<int, Future<void>> _voiceReady;
   int? _lastSpoken;
-  late final List<AudioPlayer> _voices;
-  late final List<Future<void>> _voiceReady;
 
   DateTime _now() => widget.now?.call() ?? DateTime.now();
 
@@ -37,75 +44,78 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _voices = List.generate(
-      11,
-      (_) => widget.audioPlayerFactory?.call() ?? AudioPlayer(),
-    );
-    _voiceReady = List.generate(11, _prepareVoice);
-    _deadline = _now().add(const Duration(seconds: 30));
+    _beep = widget.audioPlayerFactory?.call() ?? AudioPlayer();
+    _beepReady = _prepareBeep();
+    _lastBeep = _durationSeconds;
+    _playBeep(_durationSeconds);
+    _deadline = _now().add(const Duration(seconds: _durationSeconds));
+    _voices = {
+      for (var n = 1; n <= 10; n++)
+        n: widget.audioPlayerFactory?.call() ?? AudioPlayer(),
+    };
+    _voiceReady = {for (var n = 1; n <= 10; n++) n: _prepareVoice(n)};
     _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
   }
 
   void _tick() {
     if (!mounted || _completed || !_active) return;
-    if (_ending) {
-      if (_greetingDone) _finish();
-      return;
-    }
     final milliseconds = _deadline.difference(_now()).inMilliseconds;
-    final remaining = (milliseconds / 1000).ceil().clamp(0, 30);
+    final remaining = (milliseconds / 1000).ceil().clamp(0, _durationSeconds);
     if (remaining != _seconds) setState(() => _seconds = remaining);
+    if (remaining > 0 && _lastBeep != remaining) {
+      _lastBeep = remaining;
+      if (remaining > 10) _playBeep(remaining);
+    }
     if (remaining == 0) {
-      _ending = true;
-      _sayBirthday();
+      for (final voice in _voices.values) {
+        voice.stop().catchError((Object _) {});
+      }
+      _finish();
     } else if (remaining <= 10 && _lastSpoken != remaining) {
       _lastSpoken = remaining;
-      _speak(remaining);
+      unawaited(_speak(remaining));
     }
   }
 
   Future<void> _prepareVoice(int number) async {
     try {
-      await _voices[number].setReleaseMode(ReleaseMode.stop);
-      await _voices[number].setVolume(.85);
-      await _voices[number].setSource(
-        AssetSource('audio/countdown_$number.wav'),
-      );
-    } catch (error) {
-      debugPrint('Countdown voice unavailable: $error');
+      final voice = _voices[number]!;
+      await voice.setAudioContext(_audioContext);
+      await voice.setReleaseMode(ReleaseMode.stop);
+      await voice.setVolume(.85);
+      await voice.setSource(AssetSource('audio/countdown_$number.wav'));
+    } catch (e) {
+      debugPrint('English countdown unavailable: $e');
     }
   }
 
   Future<void> _speak(int number) async {
     try {
       await _voiceReady[number];
-      if (!mounted || !_active || _seconds != number || _ending) return;
-      await _voices[number].resume();
+      if (!mounted || !_active || _completed || _seconds != number) return;
+      await _voices[number]!.seek(Duration.zero);
+      await _voices[number]!.resume();
     } catch (_) {}
   }
 
-  Future<void> _sayBirthday() async {
-    StreamSubscription<void>? completion;
+  Future<void> _prepareBeep() async {
     try {
-      await _voiceReady[0];
-      if (!mounted || !_active) {
-        _ending = false;
-        return;
-      }
-      final finished = Completer<void>();
-      completion = _voices[0].onPlayerComplete.listen((_) {
-        if (!finished.isCompleted) finished.complete();
-      });
-      await _voices[0].resume();
-      await finished.future.timeout(const Duration(seconds: 2));
-    } catch (_) {
-      // Audio errors must not prevent the birthday reveal.
-    } finally {
-      completion?.cancel();
+      await _beep.setAudioContext(_audioContext);
+      await _beep.setReleaseMode(ReleaseMode.stop);
+      await _beep.setVolume(.3);
+      await _beep.setSource(AssetSource('audio/countdown_tick.wav'));
+    } catch (e) {
+      debugPrint('Countdown tick unavailable: $e');
     }
-    if (!mounted) return;
-    _greetingDone = true;
-    if (_active) _finish();
+  }
+
+  Future<void> _playBeep(int second) async {
+    try {
+      await _beepReady;
+      if (!mounted || !_active || _seconds != second) return;
+      await _beep.seek(Duration.zero);
+      await _beep.resume();
+    } catch (_) {}
   }
 
   void _finish() {
@@ -121,7 +131,8 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
     if (_active) {
       _tick();
     } else {
-      for (final voice in _voices) {
+      _beep.pause().catchError((Object _) {});
+      for (final voice in _voices.values) {
         voice.pause().catchError((Object _) {});
       }
     }
@@ -131,7 +142,8 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
-    for (final voice in _voices) {
+    _beep.dispose().catchError((Object _) {});
+    for (final voice in _voices.values) {
       voice.dispose().catchError((Object _) {});
     }
     super.dispose();
@@ -153,7 +165,7 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
             ),
             const SizedBox(height: 16),
             const Text(
-              '那就最后啦 闭上双眼倒数30秒～ 不能作弊哦',
+              '那就最后啦 闭上双眼倒数60秒～ 不能作弊哦',
               style: TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 36),

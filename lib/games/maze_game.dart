@@ -3,7 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flame/game.dart';
 import 'package:flame/sprite.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'animated_game_assets.dart';
+
+enum MazeCharacterView { front, back, left, right }
 
 /// Flame owns the maze's drawing, sprite animation, movement and camera easing.
 class MazeGame extends FlameGame {
@@ -20,12 +23,75 @@ class MazeGame extends FlameGame {
   }
   final VoidCallback? onReady;
   final _library = AnimatedGameAssets();
+  final minimapRevision = ValueNotifier(0);
+  double _mapElapsed = 0;
   SpriteAnimationTicker? _walker;
   SpriteAnimationTicker? _heart;
-  SpriteAnimationTicker? _bombSprite;
-  SpriteAnimationTicker? _explosionSprite;
+  ui.Image? _verticalImage;
+  Sprite? _front;
+  Sprite? _back;
   Offset? boardPosition;
   Offset? bombPickup;
+  bool carryingBomb = false;
+  Offset? _collectFrom;
+  double _collectTime = 1;
+  List<Offset> _escapeRoute = [];
+  double _escapeTime = 3;
+  static const _escapeSeconds = 2.6;
+
+  bool get targetEscaping => _escapeTime < _escapeSeconds;
+  Offset get targetPosition {
+    if (!targetEscaping || _escapeRoute.isEmpty) return _goal;
+    final distance = (_escapeTime / _escapeSeconds) * (_escapeRoute.length - 1);
+    final index = distance.floor().clamp(0, _escapeRoute.length - 2);
+    return Offset.lerp(
+      _escapeRoute[index],
+      _escapeRoute[index + 1],
+      distance - index,
+    )!;
+  }
+
+  /// Run through open corridors while the Flame camera follows the target.
+  void fleeTarget(Offset from) {
+    final queue = <Offset>[from];
+    final parents = <Offset, Offset?>{from: null};
+    for (var i = 0; i < queue.length; i++) {
+      if (queue[i] == _goal) break;
+      for (final direction in const [
+        Offset(-1, 0),
+        Offset(0, -1),
+        Offset(1, 0),
+        Offset(0, 1),
+      ]) {
+        final next = queue[i] + direction;
+        final x = next.dx.toInt(), y = next.dy.toInt();
+        if (y < 0 ||
+            y >= _rows.length ||
+            x < 0 ||
+            x >= _rows[y].length ||
+            _rows[y][x] == '#' ||
+            parents.containsKey(next)) {
+          continue;
+        }
+        parents[next] = queue[i];
+        queue.add(next);
+      }
+    }
+    if (!parents.containsKey(_goal)) return;
+    final route = <Offset>[];
+    for (Offset? p = _goal; p != null; p = parents[p]) {
+      route.add(p);
+    }
+    _escapeRoute = route.reversed.toList();
+    if (_escapeRoute.length < 2) return;
+    _escapeTime = reducedMotion ? _escapeSeconds : 0;
+  }
+
+  void collectBomb(Offset from) {
+    _collectFrom = from;
+    _collectTime = reducedMotion ? .5 : 0;
+  }
+
   Offset? plantedBomb;
   Offset? cameraFocus;
   int bombSeconds = 0;
@@ -41,7 +107,6 @@ class MazeGame extends FlameGame {
   void explode(Offset position) {
     _blastPosition = position;
     _explosionTime = 0;
-    _explosionSprite?.reset();
   }
 
   List<String> _rows = [];
@@ -59,8 +124,8 @@ class MazeGame extends FlameGame {
   double _phase = 0;
   double _cell = 48;
   int facingRow = 0;
-  int facingCol = -1;
-  bool _facesRight = false;
+  int facingCol = 1;
+  bool _facesRight = true;
   bool cameraTour = false;
   bool lookAtStart = false;
   bool lookAtGoal = false;
@@ -69,6 +134,7 @@ class MazeGame extends FlameGame {
   final List<Offset> _trail = [];
   final Set<Offset> _visited = {};
 
+  List<String> get mazeRows => List.unmodifiable(_rows);
   Offset get cameraOffset => _camera;
   Offset get playerPosition => _player;
   double get worldWidth => _rows.isEmpty ? 0 : _rows.first.length * _cell;
@@ -78,6 +144,13 @@ class MazeGame extends FlameGame {
 
   /// Vertical travel retains the last horizontal facing; the bear stays upright.
   bool get playerFacesRight => _facesRight;
+  MazeCharacterView get characterView => facingRow < 0
+      ? MazeCharacterView.back
+      : facingRow > 0
+      ? MazeCharacterView.front
+      : _facesRight
+      ? MazeCharacterView.right
+      : MazeCharacterView.left;
 
   double get playerBob => reducedMotion || !moving
       ? 0
@@ -121,17 +194,31 @@ class MazeGame extends FlameGame {
     await _library.load([
       'assets/photos/game3_move.gif',
       'assets/photos/game3_1.gif',
-      'assets/photos/game4_boom.gif',
-      'assets/photos/game4_booooom.gif',
     ]);
     _walker = _library.animation('assets/photos/game3_move.gif').createTicker();
     _heart = _library.animation('assets/photos/game3_1.gif').createTicker();
-    _bombSprite = _library
-        .animation('assets/photos/game4_boom.gif')
-        .createTicker();
-    _explosionSprite = _library
-        .animation('assets/photos/game4_booooom.gif')
-        .createTicker();
+    final data = await rootBundle.load('assets/photos/maze_vertical.png');
+    final codec = await ui.instantiateImageCodec(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      targetWidth: 640,
+    );
+    try {
+      final image = (await codec.getNextFrame()).image;
+      _verticalImage = image;
+      final scale = image.width / 1254;
+      _front = Sprite(
+        image,
+        srcPosition: Vector2(70 * scale, 298 * scale),
+        srcSize: Vector2(515 * scale, 690 * scale),
+      );
+      _back = Sprite(
+        image,
+        srcPosition: Vector2(659 * scale, 298 * scale),
+        srcSize: Vector2(518 * scale, 690 * scale),
+      );
+    } finally {
+      codec.dispose();
+    }
     onReady?.call();
   }
 
@@ -168,6 +255,7 @@ class MazeGame extends FlameGame {
 
   Offset get _cameraTarget {
     final focus =
+        (targetEscaping ? targetPosition : null) ??
         cameraFocus ??
         (lookAtGoal
             ? _goal
@@ -191,20 +279,25 @@ class MazeGame extends FlameGame {
     super.update(dt);
     final step = min(dt, .2);
     _phase += step;
+    _mapElapsed += step;
+    if (_mapElapsed >= .08) {
+      _mapElapsed = 0;
+      minimapRevision.value++;
+    }
     if (facingCol != 0) _facesRight = facingCol > 0;
     if (moving && !reducedMotion) _walker?.update(step);
     _heart?.update(step);
-    _bombSprite?.update(step);
-    _explosionSprite?.update(step);
     _fallTime += step;
     _explosionTime += step;
+    _escapeTime += step;
+    _collectTime += step;
     _moveTime += step;
     final progress = reducedMotion
         ? 1.0
         : (_moveTime / _moveSeconds).clamp(0.0, 1.0);
     _player = Offset.lerp(_from, _destination, progress)!;
     final target = _cameraTarget;
-    if (cameraTour) {
+    if (cameraTour && !targetEscaping) {
       if (_tourFocus != target) {
         _tourFocus = target;
         _tourFrom = _camera;
@@ -292,7 +385,10 @@ class MazeGame extends FlameGame {
           ).withValues(alpha: .12 + .24 * i / max(1, _trail.length)),
       );
     }
-    final goalCenter = (_goal + const Offset(.5, .5)) * _cell;
+    final goalCenter = (targetPosition + const Offset(.5, .5)) * _cell;
+    final runBob = targetEscaping && !reducedMotion
+        ? sin(_escapeTime * 32).abs() * _cell * .09
+        : 0.0;
     final pulse = reducedMotion ? 1.0 : 1 + sin(_phase * 3) * .1;
     canvas.drawCircle(
       goalCenter,
@@ -303,7 +399,10 @@ class MazeGame extends FlameGame {
     );
     _heart?.getSprite().render(
       canvas,
-      position: Vector2(goalCenter.dx - _cell * .4, goalCenter.dy - _cell * .4),
+      position: Vector2(
+        goalCenter.dx - _cell * .4,
+        goalCenter.dy - _cell * .4 - runBob,
+      ),
       size: Vector2.all(_cell * .8),
     );
     final playerCenter = (_player + const Offset(.5, .5)) * _cell;
@@ -317,23 +416,59 @@ class MazeGame extends FlameGame {
     );
     canvas.save();
     canvas.translate(playerCenter.dx, playerCenter.dy);
-    if (playerFacesRight) canvas.scale(-1, 1);
-    _walker?.getSprite().render(
+    final vertical =
+        characterView == MazeCharacterView.front ||
+        characterView == MazeCharacterView.back;
+    if (!vertical && playerFacesRight) canvas.scale(-1, 1);
+    if (vertical && moving && !reducedMotion) {
+      canvas.rotate(sin(_moveTime / _moveSeconds * pi * 2) * .025);
+    }
+    final sprite = switch (characterView) {
+      MazeCharacterView.front => _front,
+      MazeCharacterView.back => _back,
+      _ => _walker?.getSprite(),
+    };
+    // The front/back artwork fills its frame more than the side animation.
+    // Reduce it uniformly and keep the feet on the same baseline when turning.
+    final spriteWidth = _cell * (vertical ? .48 : .8);
+    final spriteHeight = _cell * (vertical ? .64 : .8);
+    sprite?.render(
       canvas,
-      position: Vector2(-_cell * .4, -_cell * .4 - playerBob),
-      size: Vector2.all(_cell * .8),
+      position: Vector2(
+        -spriteWidth / 2,
+        _cell * .4 - spriteHeight - playerBob,
+      ),
+      size: Vector2(spriteWidth, spriteHeight),
     );
     canvas.restore();
     canvas.restore();
     // Explosion is drawn in world coordinates above the player and barricade.
     canvas.save();
+    canvas.clipRect(Offset.zero & size.toSize());
     canvas.translate(-_camera.dx, -_camera.dy);
     if (_explosionTime < 1 && _blastPosition != null) {
       final c = (_blastPosition! + const Offset(.5, .5)) * _cell;
-      _explosionSprite?.getSprite().render(
-        canvas,
-        position: Vector2(c.dx - _cell * 1.2, c.dy - _cell * 1.2),
-        size: Vector2.all(_cell * 2.4),
+      final life = (1 - _explosionTime).clamp(0.0, 1.0);
+      final radius = _cell * (.2 + _explosionTime * 1.3);
+      canvas.drawCircle(
+        c,
+        radius,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              Colors.yellow.withValues(alpha: life),
+              Colors.deepOrange.withValues(alpha: life * .8),
+              Colors.orange.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: c, radius: radius)),
+      );
+      canvas.drawCircle(
+        c,
+        radius * .85,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3 * life
+          ..color = const Color(0xFFFFAD42).withValues(alpha: life),
       );
       for (var i = 0; i < 14; i++) {
         final a = i * 2.399;
@@ -350,7 +485,6 @@ class MazeGame extends FlameGame {
       }
     }
     canvas.restore();
-    _minimap(canvas);
   }
 
   void _renderPuzzle(Canvas canvas) {
@@ -385,15 +519,60 @@ class MazeGame extends FlameGame {
         }
       }
     }
-    for (final position in [bombPickup, plantedBomb]) {
+    final collecting = _collectFrom != null && _collectTime < .5;
+    final progress = Curves.easeInOutCubic.transform(
+      (_collectTime / .5).clamp(0.0, 1.0),
+    );
+    final hand = _player + const Offset(.32, -.12);
+    final flyingBomb = collecting
+        ? Offset.lerp(_collectFrom, hand, progress)! -
+              Offset(0, sin(progress * pi) * .65)
+        : null;
+    for (final item in [
+      (bombPickup, 1.0, false),
+      (plantedBomb, 1.0, true),
+      (flyingBomb, 1 - progress * .45, false),
+      (carryingBomb && !collecting ? hand : null, .55, false),
+    ]) {
+      final position = item.$1;
       if (position == null) continue;
       final c = (position + const Offset(.5, .5)) * _cell;
-      _bombSprite?.getSprite().render(
-        canvas,
-        position: Vector2(c.dx - _cell * .4, c.dy - _cell * .4),
-        size: Vector2.all(_cell * .8),
+      canvas.save();
+      canvas.translate(c.dx, c.dy);
+      canvas.scale(item.$2);
+      canvas.translate(-c.dx, -c.dy);
+      canvas.drawCircle(
+        c,
+        _cell * .24,
+        Paint()..color = const Color(0xFF302B42),
       );
-      if (position == plantedBomb) {
+      canvas.drawCircle(
+        c - Offset(_cell * .07, _cell * .08),
+        _cell * .07,
+        Paint()..color = const Color(0xFF79708C),
+      );
+      canvas.drawPath(
+        Path()
+          ..moveTo(c.dx, c.dy - _cell * .23)
+          ..quadraticBezierTo(
+            c.dx,
+            c.dy - _cell * .42,
+            c.dx + _cell * .14,
+            c.dy - _cell * .35,
+          ),
+        Paint()
+          ..color = const Color(0xFFB99459)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3,
+      );
+      if (item.$3) {
+        canvas.drawCircle(
+          c + Offset(_cell * .14, -_cell * .35),
+          _cell * .05,
+          Paint()..color = Colors.orangeAccent,
+        );
+      }
+      if (item.$3) {
         final text = TextPainter(
           textDirection: TextDirection.ltr,
           text: TextSpan(
@@ -407,6 +586,7 @@ class MazeGame extends FlameGame {
         )..layout();
         text.paint(canvas, c - Offset(text.width / 2, _cell * .65));
       }
+      canvas.restore();
     }
   }
 
@@ -415,12 +595,16 @@ class MazeGame extends FlameGame {
     return _walls!;
   }
 
-  void _minimap(Canvas canvas) {
-    final unit = min(110.0 / _rows.first.length, 100.0 / _rows.length);
+  void renderMinimap(Canvas canvas, Size viewport) {
+    if (_rows.isEmpty) return;
+    final unit = min(
+      (viewport.width - 14) / _rows.first.length,
+      (viewport.height - 14) / _rows.length,
+    );
     final width = _rows.first.length * unit;
     final height = _rows.length * unit;
-    final left = size.x - width - 20;
-    const top = 16.0;
+    final left = (viewport.width - width) / 2;
+    final top = (viewport.height - height) / 2;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(left - 7, top - 7, width + 14, height + 14),
@@ -449,8 +633,27 @@ class MazeGame extends FlameGame {
         }
       }
     }
+    for (final marker in [
+      (bombPickup, const Color(0xFFFFBD59)),
+      (boardPosition, const Color(0xFFCD8B5A)),
+    ]) {
+      final p = marker.$1;
+      if (p != null) {
+        canvas.drawRect(
+          Rect.fromCenter(
+            center: Offset(left + (p.dx + .5) * unit, top + (p.dy + .5) * unit),
+            width: unit * .9,
+            height: unit * .9,
+          ),
+          Paint()..color = marker.$2,
+        );
+      }
+    }
     canvas.drawCircle(
-      Offset(left + (_goal.dx + .5) * unit, top + (_goal.dy + .5) * unit),
+      Offset(
+        left + (targetPosition.dx + .5) * unit,
+        top + (targetPosition.dy + .5) * unit,
+      ),
       unit * .55,
       Paint()..color = const Color(0xFFFF8FB8),
     );
@@ -465,6 +668,8 @@ class MazeGame extends FlameGame {
   void onRemove() {
     _walls?.dispose();
     _walls = null;
+    minimapRevision.dispose();
+    _verticalImage?.dispose();
     _library.dispose();
     super.onRemove();
   }

@@ -46,6 +46,7 @@ class _DiaryOpenScreenState extends State<DiaryOpenScreen>
           loop: false,
           showTapToSkip: false,
           containFrom: const Duration(seconds: 10),
+          containInLandscape: false,
           containedBackgroundColor: Colors.white,
           onComplete: _finishVideo,
         ),

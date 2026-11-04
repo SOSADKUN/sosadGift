@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../config/game_music_config.dart';
+import 'game_audio_scope.dart';
 
 /// Shared backdrop for the mini-games: a soft gradient, a few floating
 /// sparkles, a back button, and a level pill — so every game looks
@@ -21,6 +23,7 @@ class GameBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final music = GameMusicConfig.forAsset(GameAudioScope.of(context)?.track);
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
@@ -73,6 +76,24 @@ class GameBackground extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (music != null)
+                        IconButton(
+                          tooltip: '音乐署名',
+                          icon: const Icon(
+                            Icons.music_note_outlined,
+                            color: Colors.white54,
+                            size: 18,
+                          ),
+                          onPressed: () => showDialog<void>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('音乐署名'),
+                              content: SingleChildScrollView(
+                                child: SelectableText(music.credit),
+                              ),
+                            ),
+                          ),
+                        ),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,

@@ -14,6 +14,7 @@ class VideoPlayerWidget extends StatefulWidget {
   /// Show the entire frame within the phone's safe area from this timestamp.
   final Duration? containFrom;
   final Color containedBackgroundColor;
+  final bool containInLandscape;
 
   const VideoPlayerWidget({
     super.key,
@@ -26,6 +27,7 @@ class VideoPlayerWidget extends StatefulWidget {
     this.mixWithOthers = false,
     this.containFrom,
     this.containedBackgroundColor = Colors.black,
+    this.containInLandscape = true,
   });
 
   @override
@@ -123,45 +125,61 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
               }
             }
           : null,
-      child: Container(
-        color: _contain ? widget.containedBackgroundColor : Colors.black,
-        child: Center(
-          child: Stack(
-            children: [
-              // 黑色背景
-              Positioned.fill(
-                child: Container(
-                  color: _contain
-                      ? widget.containedBackgroundColor
-                      : Colors.black,
-                ),
-              ),
-
-              if (_ready)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: 1,
-                    duration: const Duration(milliseconds: 400),
-                    child: Padding(
-                      padding: _contain
-                          ? MediaQuery.paddingOf(context)
-                          : EdgeInsets.zero,
-                      child: FittedBox(
-                        fit: _contain ? BoxFit.contain : BoxFit.cover,
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: _controller.value.size.width,
-                          height: _controller.value.size.height,
-                          child: VideoPlayer(_controller),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      child: _ready
+          ? VideoFrameLayout(
+              videoSize: _controller.value.size,
+              contain: _contain,
+              containInLandscape: widget.containInLandscape,
+              backgroundColor: widget.containedBackgroundColor,
+              child: VideoPlayer(_controller),
+            )
+          : const ColoredBox(color: Colors.black),
     );
   }
+}
+
+/// Keeps landscape diary footage edge-to-edge while retaining portrait framing.
+class VideoFrameLayout extends StatelessWidget {
+  const VideoFrameLayout({
+    super.key,
+    required this.videoSize,
+    required this.child,
+    required this.contain,
+    this.containInLandscape = true,
+    this.backgroundColor = Colors.black,
+  });
+  final Size videoSize;
+  final Widget child;
+  final bool contain;
+  final bool containInLandscape;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final fitEntireFrame =
+          contain &&
+          (containInLandscape || constraints.maxHeight >= constraints.maxWidth);
+      return ColoredBox(
+        color: fitEntireFrame ? backgroundColor : Colors.black,
+        child: ClipRect(
+          child: Padding(
+            padding: fitEntireFrame
+                ? MediaQuery.paddingOf(context)
+                : EdgeInsets.zero,
+            child: SizedBox.expand(
+              child: FittedBox(
+                fit: fitEntireFrame ? BoxFit.contain : BoxFit.cover,
+                child: SizedBox(
+                  width: videoSize.width,
+                  height: videoSize.height,
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }

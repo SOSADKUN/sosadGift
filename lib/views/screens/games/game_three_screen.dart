@@ -9,7 +9,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/game_background.dart';
-import '../../widgets/maze_joystick.dart';
+import '../../widgets/maze_direction_pad.dart';
+import '../../widgets/maze_mini_map.dart';
 import '../../widgets/game_failure_overlay.dart';
 import '../../widgets/game_intro_overlay.dart';
 import '../../widgets/game_key_reward_overlay.dart';
@@ -30,12 +31,14 @@ class GameThreeScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
   final bool showIntro;
+  final bool countdownOnly;
 
   const GameThreeScreen({
     super.key,
     required this.onComplete,
     required this.onLose,
     this.showIntro = false,
+    this.countdownOnly = false,
   });
 
   @override
@@ -44,7 +47,7 @@ class GameThreeScreen extends StatefulWidget {
 
 class _GameThreeScreenState extends State<GameThreeScreen>
     with WidgetsBindingObserver {
-  static const _timeLimit = 90;
+  static const _timeLimit = 120;
 
   late final MazeGame _field;
   Timer? _holdTimer;
@@ -59,8 +62,8 @@ class _GameThreeScreenState extends State<GameThreeScreen>
 
   int _playerRow = 0;
   int _playerCol = 0;
-  // The sprite's native artwork faces left, so that's the unrotated pose.
-  _Facing _facing = _Facing.left;
+  // Face into the first corridor instead of toward the left boundary.
+  _Facing _facing = _Facing.right;
   late _Point _currentGoal;
   bool _goalFled = false;
   int _secondsLeft = _timeLimit;
@@ -70,7 +73,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   bool _cameraTour = false;
   bool _lookAtStart = false;
   bool _lookAtGoal = false;
-  Offset _stickDirection = Offset.zero;
+  Offset _heldDirection = Offset.zero;
   bool _failed = false;
   String? _message;
   bool _finished = false;
@@ -88,6 +91,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
   double _distance(Offset a, Offset b) =>
       (a.dx - b.dx).abs() + (a.dy - b.dy).abs();
   late bool _introDone;
+  late bool _countdownOnly;
 
   _Point _findChar(List<String> maze, String char) {
     for (int r = 0; r < maze.length; r++) {
@@ -129,6 +133,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _introDone = !widget.showIntro;
+    _countdownOnly = widget.countdownOnly;
     _resetLevelState();
     _field = MazeGame(
       rows: _mazeRows,
@@ -162,12 +167,12 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     _cameraTour = false;
     _lookAtStart = false;
     _lookAtGoal = false;
-    _stickDirection = Offset.zero;
+    _heldDirection = Offset.zero;
     _failed = false;
     _mazeRows = kMazeVariants.first;
     _playerRow = _start.row;
     _playerCol = _start.col;
-    _facing = _Facing.left;
+    _facing = _Facing.right;
     _currentGoal = _goal;
     _goalFled = false;
     _secondsLeft = _timeLimit;
@@ -268,10 +273,12 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       _playerCol = _goal.col;
       _facing = _Facing.left;
       _currentGoal = _start;
+      _secondsLeft += 45;
       _message = '它跑回起点啦！跟着镜头看看～';
       _cameraTour = true;
     });
     _syncField();
+    _field.fleeTarget(Offset(_goal.col.toDouble(), _goal.row.toDouble()));
     // Allow the player relocation to settle before the guided camera tour.
     _cameraTimer = _delay(const Duration(milliseconds: 200), () {
       if (!mounted || _finished) return;
@@ -292,15 +299,16 @@ class _GameThreeScreenState extends State<GameThreeScreen>
           setState(() {
             _board = puzzle.board;
             _bombPickup = puzzle.bomb;
-            _message = '木板掉下来了！附近有炸弹…';
+            _message = '终点前的路被挡住了！先去右上角找炸弹。';
+            _cameraFocus = _board;
           });
           _field.dropBoard(puzzle.board);
           HapticFeedback.heavyImpact();
-          _cameraTimer = _delay(const Duration(milliseconds: 850), () {
+          _cameraTimer = _delay(const Duration(milliseconds: 1900), () {
             if (!mounted || _finished) return;
             setState(() {
               _cameraFocus = _bombPickup;
-              _message = '去拿炸弹，靠近木板放下，3 秒后爆炸！';
+              _message = '炸弹在右上角，拿到后带到路障旁！';
             });
             _cameraTimer = _delay(const Duration(milliseconds: 2600), () {
               if (!mounted || _finished) return;
@@ -360,6 +368,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       return;
     }
     GameAudioScope.effect(context, GameSound.pickup);
+    _field.collectBomb(_bombPickup!);
     setState(() {
       _bombPickup = null;
       _carryingBomb = true;
@@ -392,7 +401,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
       if (_bombSeconds > 0) return;
       timer.cancel();
       GameAudioScope.effect(context, GameSound.boom);
-      _field.explode(_plantedBomb!);
+      _field.explode(_board!);
       HapticFeedback.heavyImpact();
       setState(() {
         _board = null;
@@ -406,12 +415,11 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     });
   }
 
-  void _onJoystick(Offset direction) {
+  void _onDirection(Offset direction) {
     _holdTimer?.cancel();
-    _stickDirection = direction;
+    _heldDirection = direction;
     if (direction == Offset.zero || _cameraTour || _finished || _paused) return;
-    void move() =>
-        _move(_stickDirection.dy.toInt(), _stickDirection.dx.toInt());
+    void move() => _move(_heldDirection.dy.toInt(), _heldDirection.dx.toInt());
     move();
     _holdTimer = _repeat(MazeGame.moveRepeatInterval, (_) => move());
   }
@@ -428,6 +436,7 @@ class _GameThreeScreenState extends State<GameThreeScreen>
     _field.cameraFocus = _cameraFocus;
     _field.boardPosition = _board;
     _field.bombPickup = _bombPickup;
+    _field.carryingBomb = _carryingBomb;
     _field.plantedBomb = _plantedBomb;
     _field.bombSeconds = _bombSeconds;
     _field.facingCol = _facing == _Facing.right
@@ -464,20 +473,28 @@ class _GameThreeScreenState extends State<GameThreeScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (_message != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _message!,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+              SizedBox(
+                height: 48,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      _message ??
+                          (_goalFled ? '先拿炸弹，再清开通往布布的路障' : '沿着迷宫找到布布 ♡'),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    ),
                   ),
                 ),
-              ],
+              ),
               const SizedBox(height: 6),
               const Text(
-                '推动摇杆移动 · 松手停下',
+                '点按方向走一格 · 长按连续走 · 松手停下',
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 8),
@@ -498,35 +515,75 @@ class _GameThreeScreenState extends State<GameThreeScreen>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 16, top: 8),
-                child: MazeJoystick(
-                  enabled: _introDone && !_cameraTour && !_finished && !_paused,
-                  onChanged: _onJoystick,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            '路线图',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          MazeMiniMap(game: _field),
+                          const SizedBox(height: 4),
+                          const Text(
+                            '粉：目标 · 金：炸弹',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    MazeDirectionPad(
+                      enabled:
+                          _introDone && !_cameraTour && !_finished && !_paused,
+                      onChanged: _onDirection,
+                    ),
+                  ],
                 ),
               ),
-              if (_board != null && !_cameraTour && !_finished)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: FilledButton(
-                    onPressed: _paused
-                        ? null
-                        : _carryingBomb
-                        ? (_distance(_playerCell, _board!) == 1
-                              ? _plantBomb
-                              : null)
-                        : (_bombPickup != null &&
-                                  _distance(_playerCell, _bombPickup!) <= 1
-                              ? _takeBomb
-                              : null),
-                    child: Text(
-                      _plantedBomb != null
-                          ? '$_bombSeconds 秒后爆炸'
-                          : _carryingBomb
-                          ? '放下炸弹'
-                          : '拿起炸弹',
-                    ),
-                  ),
-                ),
+              SizedBox(
+                height: 48,
+                child: _board != null && !_cameraTour && !_finished
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Center(
+                          child: FilledButton(
+                            onPressed: _paused
+                                ? null
+                                : _carryingBomb
+                                ? (_distance(_playerCell, _board!) == 1
+                                      ? _plantBomb
+                                      : null)
+                                : (_bombPickup != null &&
+                                          _distance(
+                                                _playerCell,
+                                                _bombPickup!,
+                                              ) <=
+                                              1
+                                      ? _takeBomb
+                                      : null),
+                            child: Text(
+                              _plantedBomb != null
+                                  ? '$_bombSeconds 秒后爆炸'
+                                  : _carryingBomb
+                                  ? '放下炸弹'
+                                  : '拿起炸弹',
+                            ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ],
           ),
         ),
@@ -543,15 +600,19 @@ class _GameThreeScreenState extends State<GameThreeScreen>
           GameFailureOverlay(
             title: '时间到啦！',
             onRetry: () {
-              setState(_resetLevelState);
-              _startOpeningTour();
+              setState(() {
+                _resetLevelState();
+                _introDone = false;
+                _countdownOnly = true;
+              });
             },
             onExit: widget.onLose,
           ),
         if (!_introDone)
           GameIntroOverlay(
+            countdownOnly: _countdownOnly,
             title: '迷宫大冒险',
-            instructionText: '推动下方摇杆带布布走出迷宫～\n时间限制 $_timeLimit 秒，加油哦～',
+            instructionText: '点按下方方向键走一格，长按连续移动～\n时间限制 $_timeLimit 秒，加油哦～',
             onStart: _onIntroStart,
           ),
       ],

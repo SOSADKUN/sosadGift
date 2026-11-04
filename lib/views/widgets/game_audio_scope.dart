@@ -5,9 +5,17 @@ export '../../services/game_audio.dart' show GameAudio, GameSound;
 
 /// Keeps music alive through a round and releases every player on route exit.
 class GameAudioScope extends StatefulWidget {
-  const GameAudioScope({super.key, required this.audio, required this.child});
+  const GameAudioScope({
+    super.key,
+    required this.audio,
+    required this.child,
+    this.disposeAudio = true,
+    this.playEntranceSound = true,
+  });
   final GameAudio audio;
   final Widget child;
+  final bool disposeAudio;
+  final bool playEntranceSound;
 
   static GameAudio? of(BuildContext context) =>
       context.getInheritedWidgetOfExactType<_AudioProvider>()?.audio;
@@ -32,7 +40,9 @@ class _GameAudioScopeState extends State<GameAudioScope>
           WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
     );
     unawaited(widget.audio.start());
-    unawaited(widget.audio.effect(GameSound.door));
+    if (widget.playEntranceSound) {
+      unawaited(widget.audio.effect(GameSound.door));
+    }
   }
 
   @override
@@ -42,7 +52,7 @@ class _GameAudioScopeState extends State<GameAudioScope>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(widget.audio.dispose());
+    if (widget.disposeAudio) unawaited(widget.audio.dispose());
     super.dispose();
   }
 

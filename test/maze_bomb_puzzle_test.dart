@@ -62,7 +62,9 @@ void main() {
         isNotEmpty,
       );
       expect(route(rows, start, goal, blocked: puzzle.board), isEmpty);
-      expect((puzzle.bomb - puzzle.board).distance, 1);
+      expect(puzzle.bomb, const Offset(21, 1));
+      expect((puzzle.board - goal).distance, lessThanOrEqualTo(6));
+      expect((puzzle.board - start).distance, greaterThan(10));
       expect(route(rows, start, goal), isNotEmpty);
     }
   });
@@ -89,10 +91,14 @@ void main() {
       await tester.pump();
       await advance(tester, 5000);
       Future<void> move(Offset direction) async {
-        final stick = tester.getCenter(
-          find.byKey(const ValueKey('maze-joystick')),
-        );
-        await tester.tapAt(stick + direction * 36);
+        final name = direction.dx > 0
+            ? 'right'
+            : direction.dx < 0
+            ? 'left'
+            : direction.dy > 0
+            ? 'down'
+            : 'up';
+        await tester.tap(find.byKey(ValueKey('maze-$name')));
         await advance(tester, 200);
       }
 
@@ -104,28 +110,40 @@ void main() {
       for (var i = 1; i < path.length - 1; i++) {
         await move(path[i] - path[i - 1]);
       }
-      await advance(tester, 10000);
+      await advance(tester, 11000);
       expect(game.boardPosition, isNotNull);
       expect(game.bombPickup, isNotNull);
       final board = game.boardPosition!;
       final bomb = game.bombPickup!;
+      Future<void> walk(List<Offset> path) async {
+        for (var i = 1; i < path.length; i++) {
+          await move(path[i] - path[i - 1]);
+        }
+      }
+
+      final rows = game.mazeRows;
+      await walk(route(rows, game.playerPosition, bomb, blocked: board));
       await tester.tap(find.text('拿起炸弹'));
       await tester.pump();
       expect(game.bombPickup, isNull);
-      await move(bomb - game.playerPosition);
-      await move(board - bomb);
-      expect(game.playerPosition, bomb); // The board prevents movement.
+      final approach = route(rows, game.playerPosition, board);
+      await walk(approach.sublist(0, approach.length - 1));
+      final standing = game.playerPosition;
+      await move(board - standing);
+      expect(game.playerPosition, standing); // Barricade blocks entry.
       await tester.tap(find.text('放下炸弹'));
       await tester.pump();
-      expect(game.plantedBomb, bomb);
+      expect(game.plantedBomb, standing);
       expect(game.bombSeconds, 3);
       await advance(tester, 2990);
       expect(game.boardPosition, board);
       await advance(tester, 20);
       expect(game.boardPosition, isNull);
       expect(game.plantedBomb, isNull);
-      await move(board - bomb);
+      await move(board - standing);
       expect(game.playerPosition, board);
+      await walk(route(rows, game.playerPosition, const Offset(1, 1)));
+      expect(find.text('成功找到布布 · 获得一把钥匙 ♡'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

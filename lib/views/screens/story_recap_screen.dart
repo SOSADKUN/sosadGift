@@ -31,7 +31,12 @@ class _StoryRecapScreenState extends State<StoryRecapScreen>
     if (index >= 0) {
       _music.play(
         'music/story${index + 1}.mp3',
-        startPosition: index == 3 ? const Duration(seconds: 15) : Duration.zero,
+        startPosition: switch (index) {
+          0 => Duration.zero,
+          2 => const Duration(seconds: 1),
+          3 => const Duration(seconds: 15),
+          _ => Duration.zero,
+        },
       );
     }
   }

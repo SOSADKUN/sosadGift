@@ -14,11 +14,13 @@ class GameOneScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
   final bool showIntro;
+  final bool countdownOnly;
   const GameOneScreen({
     super.key,
     required this.onComplete,
     required this.onLose,
     this.showIntro = false,
+    this.countdownOnly = false,
   });
 
   @override
@@ -35,6 +37,7 @@ class _GameOneScreenState extends State<GameOneScreen>
   Timer? _clock;
   Timer? _respawn;
   late bool _introDone;
+  late bool _countdownOnly;
   int _count = 0;
   int _seconds = 30;
   int _ready = 3;
@@ -56,6 +59,19 @@ class _GameOneScreenState extends State<GameOneScreen>
       },
     );
     _introDone = !widget.showIntro;
+    _countdownOnly = widget.countdownOnly;
+  }
+
+  void _retryCountdown() {
+    _clock?.cancel();
+    _respawn?.cancel();
+    _elapsed.stop();
+    setState(() {
+      _finished = false;
+      _visible = false;
+      _introDone = false;
+      _countdownOnly = true;
+    });
   }
 
   void _onIntroStart() {
@@ -420,11 +436,12 @@ class _GameOneScreenState extends State<GameOneScreen>
         if (_finished && _count < _goal)
           GameFailureOverlay(
             title: '时间到啦，抓到了 $_count 个！',
-            onRetry: () => _start(),
+            onRetry: _retryCountdown,
             onExit: widget.onLose,
           ),
         if (!_introDone)
           GameIntroOverlay(
+            countdownOnly: _countdownOnly,
             title: '小鸡毛大作战',
             instructionText: '30 秒内，点到 30 个小鸡毛！\n小鸡毛会飞来飞去哦～\n完成就能拿到一把钥匙 ♡',
             onStart: _onIntroStart,

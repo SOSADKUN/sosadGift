@@ -68,6 +68,9 @@ flutter_launcher_icons:
   web:
     generate: true
   image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#F2D6E8"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  adaptive_icon_foreground_inset: 16
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -110,6 +113,7 @@ flutter:
     - assets/photos/game2_5.gif
     - assets/photos/game2_6.gif
     - assets/photos/game3_move.gif
+    - assets/photos/maze_vertical.png
     - assets/photos/game3_1.gif
     - assets/photos/game3_success.gif
     - assets/photos/game4_1.gif

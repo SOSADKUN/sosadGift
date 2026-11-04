@@ -32,12 +32,14 @@ class GameTwoScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onLose;
   final bool showIntro;
+  final bool countdownOnly;
 
   const GameTwoScreen({
     super.key,
     required this.onComplete,
     required this.onLose,
     this.showIntro = false,
+    this.countdownOnly = false,
   });
 
   @override
@@ -65,6 +67,7 @@ class _GameTwoScreenState extends State<GameTwoScreen>
   Timer? _nextRoundTimer;
   Timer? _padTimer;
   late bool _introDone;
+  late bool _countdownOnly;
   Timer? _playTimer;
   bool _won = false;
   bool _claimed = false;
@@ -93,6 +96,16 @@ class _GameTwoScreenState extends State<GameTwoScreen>
       onReady: _onFieldReady,
     );
     _introDone = !widget.showIntro;
+    _countdownOnly = widget.countdownOnly;
+  }
+
+  void _retryCountdown() {
+    setState(() {
+      _finished = false;
+      _failed = false;
+      _introDone = false;
+      _countdownOnly = true;
+    });
   }
 
   void _onIntroStart() {
@@ -286,11 +299,12 @@ class _GameTwoScreenState extends State<GameTwoScreen>
         if (_failed)
           GameFailureOverlay(
             title: '记错顺序啦！',
-            onRetry: _startLevel,
+            onRetry: _retryCountdown,
             onExit: widget.onLose,
           ),
         if (!_introDone)
           GameIntroOverlay(
+            countdownOnly: _countdownOnly,
             title: '心动记忆',
             instructionText:
                 '看好卡片亮起的顺序\n轮到妳时，按同样的顺序点一遍\n每过一关顺序会变长一点，坚持到第 5 关就赢啦～',

@@ -1,4 +1,6 @@
 import 'dart:async';
+import '../../../config/game_music_config.dart';
+import '../../../config/game_hub_music_config.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/video_player_widget.dart';
 import '../../widgets/game_audio_scope.dart';
@@ -11,15 +13,25 @@ enum _Mood { none, sad, celebrate }
 
 class GameHubScreen extends StatefulWidget {
   final VoidCallback onAllGamesComplete;
+  final GameAudio? audio;
 
-  const GameHubScreen({super.key, required this.onAllGamesComplete});
+  const GameHubScreen({
+    super.key,
+    required this.onAllGamesComplete,
+    this.audio,
+  });
 
   @override
   State<GameHubScreen> createState() => _GameHubScreenState();
 }
 
 class _GameHubScreenState extends State<GameHubScreen> {
-  final _audio = GameAudio('audio/game_hub.wav');
+  late final _audio =
+      widget.audio ??
+      GameAudio(
+        GameHubMusicConfig.asset,
+        musicVolume: GameHubMusicConfig.volume,
+      );
   // Add/remove games here — one door per entry, in door order
   // [top-left, top-right, bottom-left, bottom-right].
   late final List<
@@ -33,22 +45,26 @@ class _GameHubScreenState extends State<GameHubScreen> {
     (onComplete, onLose, showIntro) => GameOneScreen(
       onComplete: onComplete,
       onLose: onLose,
-      showIntro: showIntro,
+      showIntro: true,
+      countdownOnly: !showIntro,
     ),
     (onComplete, onLose, showIntro) => GameTwoScreen(
       onComplete: onComplete,
       onLose: onLose,
-      showIntro: showIntro,
+      showIntro: true,
+      countdownOnly: !showIntro,
     ),
     (onComplete, onLose, showIntro) => GameThreeScreen(
       onComplete: onComplete,
       onLose: onLose,
-      showIntro: showIntro,
+      showIntro: true,
+      countdownOnly: !showIntro,
     ),
     (onComplete, onLose, showIntro) => GameFourScreen(
       onComplete: onComplete,
       onLose: onLose,
-      showIntro: showIntro,
+      showIntro: true,
+      countdownOnly: !showIntro,
     ),
   ];
 
@@ -63,13 +79,14 @@ class _GameHubScreenState extends State<GameHubScreen> {
 
   void _openGame(int index) async {
     if (_solved.contains(index) || _openingGame) return;
-    _openingGame = true;
+    setState(() => _openingGame = true);
 
     final showIntro = !_instructionsShown.contains(index);
     _instructionsShown.add(index);
 
     final gameAudio = GameAudio(
-      'audio/game_${['feather', 'memory', 'maze', 'mole'][index]}.wav',
+      GameMusicConfig.tracks[index].asset,
+      musicVolume: index == 1 ? .12 : .23,
     );
     _audio.setPaused(true);
     try {
@@ -86,8 +103,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
         ),
       );
     } finally {
-      _openingGame = false;
-      if (mounted) _audio.setPaused(false);
+      if (mounted) {
+        setState(() => _openingGame = false);
+        _audio.setPaused(false);
+      }
     }
   }
 
@@ -99,13 +118,15 @@ class _GameHubScreenState extends State<GameHubScreen> {
       _mood = _Mood.celebrate;
       if (_solved.length == _games.length) _showCompletionPopup = true;
     });
-    if (!_showCompletionPopup) _resetMoodAfter(const Duration(seconds: 2));
+    if (!_showCompletionPopup) {
+      _resetMoodAfter(const Duration(milliseconds: 4500));
+    }
   }
 
   void _loseGame(int index) {
     Navigator.of(context).pop();
     setState(() => _mood = _Mood.sad);
-    _resetMoodAfter(const Duration(seconds: 2));
+    _resetMoodAfter(const Duration(milliseconds: 4500));
   }
 
   void _resetMoodAfter(Duration duration) {
@@ -125,6 +146,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
   Widget build(BuildContext context) {
     return GameAudioScope(
       audio: _audio,
+      disposeAudio: widget.audio == null,
+      playEntranceSound: false,
       child: Stack(
         children: [
           // Background + door art both come from the video.
@@ -134,7 +157,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
               mixWithOthers: true,
               loop: true,
               showTapToSkip: false,
-              paused: _showCompletionPopup,
+              paused: _showCompletionPopup || _openingGame,
             ),
           ),
 
@@ -190,7 +213,17 @@ class _GameHubScreenState extends State<GameHubScreen> {
                                   winCount: _solved.length,
                                   mood: _mood,
                                 ),
-                                const _SpeechBubble(text: '点击门口进入游戏哦～'),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 250),
+                                  child: _SpeechBubble(
+                                    key: ValueKey(_mood),
+                                    text: switch (_mood) {
+                                      _Mood.none => '点击门口进入游戏哦～',
+                                      _Mood.sad => '再接再厉 加油啊！',
+                                      _Mood.celebrate => '继续fightthing！',
+                                    },
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -314,9 +347,6 @@ class _GameHubScreenState extends State<GameHubScreen> {
   }
 }
 
-/// Character portrait, with a small reaction badge that pops in on
-/// win/lose. Swap assets/photos/character.gif for a different animation
-/// whenever you like — no code changes needed.
 class _HubCharacter extends StatelessWidget {
   final int winCount;
   final _Mood mood;
@@ -400,7 +430,7 @@ class _HubCharacter extends StatelessWidget {
 /// Little hint bubble under the character, pointing up at it.
 class _SpeechBubble extends StatelessWidget {
   final String text;
-  const _SpeechBubble({required this.text});
+  const _SpeechBubble({super.key, required this.text});
 
   static const _bubbleColor = Color(0xE6FFFFFF);
 

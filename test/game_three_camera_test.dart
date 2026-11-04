@@ -5,7 +5,8 @@ import 'package:gift/games/maze_game.dart';
 import 'package:gift/views/screens/games/game_three_screen.dart';
 
 Offset stick(WidgetTester tester) =>
-    tester.getCenter(find.byKey(const ValueKey('maze-joystick')));
+    tester.getCenter(find.byKey(const ValueKey('maze-right'))) -
+    const Offset(36, 0);
 
 Future<void> finishTour(WidgetTester tester) async {
   for (var i = 0; i < 310; i++) {
@@ -35,10 +36,18 @@ void main() {
       });
       await tester.pump();
       await finishTour(tester);
+      final mapRect = tester.getRect(
+        find.byKey(const ValueKey('maze-mini-map')),
+      );
+      final playRect = tester.getRect(find.byType(GameWidget<MazeGame>));
+      expect(mapRect.overlaps(playRect), isFalse);
+      expect(game.playerFacesRight, isTrue);
       expect(game.worldWidth, greaterThan(game.size.x * 2));
       expect(game.cameraOffset.dx, closeTo(0, .1));
       for (var i = 0; i < 4; i++) {
-        await tester.tapAt(stick(tester) + const Offset(36, 0));
+        await tester.tapAt(
+          tester.getCenter(find.byKey(const ValueKey('maze-right'))),
+        );
         await tester.pump(const Duration(milliseconds: 180));
       }
       for (var i = 0; i < 20; i++) {
@@ -51,11 +60,13 @@ void main() {
         lessThanOrEqualTo(game.worldWidth - game.size.x),
       );
       final before = game.playerPosition;
-      await tester.tapAt(stick(tester) + const Offset(0, -36));
+      await tester.tapAt(
+        tester.getCenter(find.byKey(const ValueKey('maze-up'))),
+      );
       await tester.pump(const Duration(milliseconds: 180));
       expect(game.playerPosition, before); // The adjacent cell is a wall.
-      final left = stick(tester) + const Offset(-36, 0);
-      final right = stick(tester) + const Offset(36, 0);
+      final left = tester.getCenter(find.byKey(const ValueKey('maze-left')));
+      final right = tester.getCenter(find.byKey(const ValueKey('maze-right')));
       expect(right.dx - left.dx, greaterThan(60));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -80,7 +91,7 @@ void main() {
     await tester.pump();
     await finishTour(tester);
     final touch = await tester.startGesture(
-      stick(tester) + const Offset(36, 0),
+      tester.getCenter(find.byKey(const ValueKey('maze-right'))),
     );
     for (var i = 0; i < 45; i++) {
       await tester.pump(const Duration(milliseconds: 16));

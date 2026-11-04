@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import '../../config/treasure_hunt_config.dart';
+import '../../services/finale_music.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:record/record.dart';
@@ -17,6 +18,7 @@ class DigitalCakeScreen extends StatefulWidget {
     this.onComplete,
     this.birthdayPlayer,
     this.fireworksPlayer,
+    this.finaleMusic,
     this.blowLevels,
   });
   final VoidCallback? onComplete;
@@ -24,6 +26,7 @@ class DigitalCakeScreen extends StatefulWidget {
   /// Optional player for testing audio completion independently of native audio.
   final AudioPlayer? birthdayPlayer;
   final AudioPlayer? fireworksPlayer;
+  final FinaleMusic? finaleMusic;
 
   /// Injectable microphone levels for platforms without a native recorder.
   final Stream<double>? blowLevels;
@@ -37,8 +40,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   late final _birthdayPlayer = widget.birthdayPlayer ?? AudioPlayer();
   bool _completed = false;
   bool _musicError = false;
-  StreamSubscription<void>? _birthdayComplete;
-  bool _songFinished = false;
+  late final _finaleMusic = widget.finaleMusic ?? FinaleMusic();
   bool _blownOut = false;
   bool _micActive = false;
   bool _holdingBlow = false;
@@ -47,18 +49,22 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   int _micSession = 0;
   StreamSubscription<double>? _levelSub;
   bool _celebrationFinished = false;
+  bool _birthdayFaded = false;
+  double _lastBirthdayVolume = .65;
   late final _fireworkSound = widget.fireworksPlayer ?? AudioPlayer();
   late final AnimationController _celebration =
       AnimationController(
-        vsync: this,
-        duration: const Duration(seconds: 6),
-        animationBehavior: AnimationBehavior.preserve,
-      )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _celebrationFinished = true;
-          _scheduleFinale();
-        }
-      });
+          vsync: this,
+          duration: BirthdayFireworks.duration,
+          animationBehavior: AnimationBehavior.preserve,
+        )
+        ..addListener(_updateBirthdayFade)
+        ..addStatusListener((status) {
+          if (status == AnimationStatus.completed) {
+            _celebrationFinished = true;
+            _scheduleFinale();
+          }
+        });
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _audioSub;
@@ -74,17 +80,14 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   @override
   void initState() {
     super.initState();
-    _birthdayComplete = _birthdayPlayer.onPlayerComplete.listen((_) {
-      _songFinished = true;
-      _scheduleFinale();
-    });
+    _finaleMusic.photosReady.addListener(_scheduleFinale);
     _playBirthdaySong();
   }
 
   Future<void> _playBirthdaySong() async {
     if (mounted) setState(() => _musicError = false);
     try {
-      await _birthdayPlayer.setReleaseMode(ReleaseMode.release);
+      await _birthdayPlayer.setReleaseMode(ReleaseMode.loop);
       if (!mounted) return;
       await _birthdayPlayer.play(
         AssetSource(TreasureHuntConfig.birthdaySong),
@@ -196,18 +199,49 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
     HapticFeedback.mediumImpact();
     _releaseBlow();
     _celebration.forward();
+    unawaited(_crossfadeToFinale());
     _fireworkSound
-        .play(AssetSource('audio/birthday_fireworks.wav'), volume: .65)
+        .play(
+          AssetSource('audio/birthday_fireworks_luxe.wav'),
+          volume: .5,
+          ctx: FinaleMusic.audioContext,
+        )
         .catchError((Object _) {});
   }
 
+  Future<void> _crossfadeToFinale() async {
+    try {
+      await _finaleMusic.start();
+    } catch (e) {
+      debugPrint('Finale music unavailable: $e');
+    }
+  }
+
+  void _updateBirthdayFade() {
+    if (!_blownOut || _birthdayFaded) return;
+    final volume =
+        .65 *
+        (1 -
+                _celebration.value *
+                    (BirthdayFireworks.duration.inMilliseconds / 1000) /
+                    .9)
+            .clamp(0.0, 1.0);
+    if ((_lastBirthdayVolume - volume).abs() > .04 || volume == 0) {
+      _lastBirthdayVolume = volume;
+      _birthdayPlayer.setVolume(volume).catchError((Object _) {});
+    }
+    if (volume == 0) {
+      _birthdayFaded = true;
+      _birthdayPlayer.stop().catchError((Object _) {});
+    }
+  }
+
   void _scheduleFinale() {
-    if (!mounted ||
-        !_songFinished ||
-        !_cakeReady ||
-        !_blownOut ||
-        !_celebrationFinished ||
-        _completed) {
+    if (!mounted || !_cakeReady || !_blownOut || _completed) {
+      return;
+    }
+    if (!_finaleMusic.photosReady.value &&
+        (!_celebrationFinished || _finaleMusic.hasPlaybackPosition)) {
       return;
     }
     _completed = true;
@@ -216,10 +250,11 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
 
   @override
   void dispose() {
+    _finaleMusic.photosReady.removeListener(_scheduleFinale);
     _celebration.dispose();
     _fireworkSound.dispose().catchError((Object _) {});
     _levelSub?.cancel();
-    _birthdayComplete?.cancel();
+    if (widget.finaleMusic == null) _finaleMusic.dispose();
     _birthdayPlayer.dispose();
     _audioSub?.cancel();
     _recorder?.dispose();
@@ -287,6 +322,25 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
           ),
         ),
         if (_blownOut) BirthdayFireworks(animation: _celebration),
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 8,
+          right: 8,
+          child: TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AlertDialog(
+                title: Text('音乐署名'),
+                content: SelectableText(
+                  "Happy Birthday to You Classical\nSergeQuadrado\n\nCC BY-NC 4.0\nhttps://creativecommons.org/licenses/by-nc/4.0/\n\n来源：Freesound #541177\n私人生日用途，原录音未作音乐剪辑。",
+                ),
+              ),
+            ),
+            child: const Text(
+              '音乐署名',
+              style: TextStyle(color: Colors.white54, fontSize: 11),
+            ),
+          ),
+        ),
         Positioned(
           bottom: MediaQuery.paddingOf(context).bottom + 10,
           left: 0,

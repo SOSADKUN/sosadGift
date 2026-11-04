@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 
 /// Serializes track changes so quick chapter navigation cannot overlap songs.
 class FadingMusic {
-  FadingMusic({AudioPlayer? player}) : _player = player ?? AudioPlayer();
+  FadingMusic({AudioPlayer? player, AudioContext? audioContext})
+    : _player = player ?? AudioPlayer(),
+      _audioContext = audioContext;
 
   final AudioPlayer _player;
+  final AudioContext? _audioContext;
   Future<void> _queue = Future.value();
   String? _requested;
   int _revision = 0;
@@ -15,6 +18,7 @@ class FadingMusic {
   double _volume = 0;
 
   Stream<void> get onComplete => _player.onPlayerComplete;
+  Stream<Duration> get onPositionChanged => _player.onPositionChanged;
 
   Future<void> play(
     String asset, {
@@ -37,6 +41,7 @@ class FadingMusic {
           await _player.play(
             AssetSource(asset),
             volume: 0,
+            ctx: _audioContext,
             position: startPosition,
           );
           if (_paused) await _player.pause();

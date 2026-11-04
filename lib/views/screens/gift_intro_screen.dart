@@ -1,20 +1,29 @@
 import 'dart:math' as math;
-import 'package:audioplayers/audioplayers.dart';
+import 'dart:async';
+import '../../config/game_hub_music_config.dart';
+import '../../services/game_audio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// A single cinematic invitation, with four accumulating lines of copy.
 class GiftIntroScreen extends StatefulWidget {
   final VoidCallback onComplete;
+  final GameAudio? audio;
+  final Duration? chorusStart;
 
-  const GiftIntroScreen({super.key, required this.onComplete});
+  const GiftIntroScreen({
+    super.key,
+    required this.onComplete,
+    this.audio,
+    this.chorusStart,
+  });
 
   @override
   State<GiftIntroScreen> createState() => _GiftIntroScreenState();
 }
 
 class _GiftIntroScreenState extends State<GiftIntroScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _sentences = [
     '前年我的生日app的game不是很完美',
     '今年我又回来了！！噗哈哈哈',
@@ -23,48 +32,78 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
   ];
   static const _gold = Color(0xFFECD2A4);
   late final AnimationController _timeline;
-  final _player = AudioPlayer();
+  bool _active = true;
+  bool _audioReady = false;
+  late final _audio =
+      widget.audio ??
+      GameAudio(
+        GameHubMusicConfig.asset,
+        musicVolume: GameHubMusicConfig.volume,
+      );
+  StreamSubscription<Duration>? _musicPosition;
+  Duration get _introDuration =>
+      widget.chorusStart ?? GameHubMusicConfig.fallbackIntroDuration;
   bool _completed = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _timeline =
         AnimationController(
           vsync: this,
-          duration: const Duration(seconds: 12),
+          duration: _introDuration,
           animationBehavior: AnimationBehavior.preserve,
-        )
-          ..addStatusListener((status) {
-            if (status == AnimationStatus.completed && !_completed) {
-              _completed = true;
-              widget.onComplete();
-            }
-          });
-    _playMusic();
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed &&
+              !_completed &&
+              widget.chorusStart == null) {
+            _completed = true;
+            widget.onComplete();
+          }
+        });
+    unawaited(_prepareAudio());
   }
 
-  Future<void> _playMusic() async {
-    try {
-      await _player.setReleaseMode(ReleaseMode.loop);
-      if (!mounted) return;
-      await _player.play(AssetSource('audio/gift_intro_bgm.mp3'), volume: 0.6);
-    } catch (_) {
-      // The optional soundtrack is not bundled yet; the intro works silently.
+  Future<void> _prepareAudio() async {
+    _musicPosition = _audio.positions.listen(_checkChorus);
+    await _audio.start();
+    if (!mounted) return;
+    _audioReady = true;
+    if (_active) {
+      _checkChorus(_audio.musicPosition);
+      _timeline.forward();
+    }
+  }
+
+  void _checkChorus(Duration position) {
+    if (!mounted || !_active || _completed || widget.chorusStart == null) {
+      return;
+    }
+    if (position >= widget.chorusStart!) {
+      _completed = true;
+      widget.onComplete();
     }
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Preserve time to read, while respecting reduced-motion preferences.
-    if (!_timeline.isAnimating && !_completed) _timeline.forward();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _active = state == AppLifecycleState.resumed;
+    _audio.setForeground(_active);
+    if (!_active) {
+      _timeline.stop();
+    } else if (_audioReady && !_completed) {
+      _checkChorus(_audio.musicPosition);
+      _timeline.forward();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timeline.dispose();
-    _player.dispose();
+    _musicPosition?.cancel();
+    if (widget.audio == null) unawaited(_audio.dispose());
     super.dispose();
   }
 
@@ -147,7 +186,7 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
                                     _line(i, reducedMotion),
                                   const SizedBox(height: 32),
                                   Opacity(
-                                    opacity: _reveal(0.72),
+                                    opacity: _reveal(.72),
                                     child: Column(
                                       children: [
                                         Row(
@@ -198,7 +237,7 @@ class _GiftIntroScreenState extends State<GiftIntroScreen>
   }
 
   Widget _line(int index, bool reducedMotion) {
-    final reveal = _reveal(0.07 + index * 0.17);
+    final reveal = _reveal([.07, .24, .41, .58][index]);
     final last = index == 3;
     return Padding(
       padding: EdgeInsets.only(bottom: last ? 0 : 25, top: last ? 15 : 0),

@@ -135,7 +135,7 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2025/5.jpg',
       ),
       StoryStep(
-        sentence: '好可爱！！！！',
+        sentence: '好可爱！我爱妳www',
         imageAsset: 'assets/photos/story/2025/6.jpg',
       ),
     ],

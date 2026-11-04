@@ -1,5 +1,5 @@
 import 'dart:async';
-import '../../services/fading_music.dart';
+import '../../services/finale_music.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,18 +10,16 @@ import 'video_memory_screen.dart';
 export '../../games/memory_float_pose.dart';
 
 class MemoryFinaleScreen extends StatefulWidget {
-  const MemoryFinaleScreen({super.key, this.useMockPhotos = false});
+  const MemoryFinaleScreen({super.key, this.useMockPhotos = false, this.music});
   final bool useMockPhotos;
+  final FinaleMusic? music;
   @override
   State<MemoryFinaleScreen> createState() => _MemoryFinaleScreenState();
 }
 
 class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
     with WidgetsBindingObserver {
-  final _music = FadingMusic();
-  StreamSubscription<void>? _completion;
-  List<String> _tracks = [];
-  int _trackIndex = 0;
+  late final _music = widget.music ?? FinaleMusic();
   MemoryAlbumGame? _album;
   int _photoCount = 0;
   bool _loading = true;
@@ -69,26 +67,8 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   }
 
   Future<void> _playMusic() async {
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    if (!mounted) return;
-    _tracks =
-        manifest
-            .listAssets()
-            .where(
-              (path) => RegExp(
-                r'^assets/music/last_display_music[1-9][0-9]*\.mp3$',
-              ).hasMatch(path),
-            )
-            .toList()
-          ..sort();
-    if (_tracks.isEmpty) return;
-    _completion = _music.onComplete.listen((_) {
-      if (!mounted) return;
-      _trackIndex = (_trackIndex + 1) % _tracks.length;
-      _music.play(_tracks[_trackIndex].substring(7), loop: false);
-    });
     _music.setPaused(!_active || _videoMenuOpen);
-    await _music.play(_tracks.first.substring(7), loop: false);
+    await _music.start();
   }
 
   @override
@@ -128,8 +108,7 @@ class _MemoryFinaleScreenState extends State<MemoryFinaleScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _completion?.cancel();
-    _music.dispose();
+    if (widget.music == null) _music.dispose();
     super.dispose();
   }
 
