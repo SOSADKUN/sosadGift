@@ -71,7 +71,11 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2023/1.jpg',
       ),
       StoryStep(
-        sentence: ' 直接去puchong找妳的我 的却考虑得不周到wwww 但我第一次那么大胆诶！',
+        sentence: '那时候妳问我哪个好看 我一猜就中了的诶！',
+        imageAsset: 'assets/photos/story/2023/1.2.jpg',
+      ),
+      StoryStep(
+        sentence: ' 之后生日 直接飞去puchong找妳的我 的却考虑得不周到wwww 但我第一次那么大胆诶！',
         imageAsset: 'assets/photos/story/2023/2.jpg',
       ),
       StoryStep(
@@ -131,11 +135,11 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2025/4.jpg',
       ),
       StoryStep(
-        sentence: '继续欣赏美人 OWO',
+        sentence: '日落下的女人 日落下的美人 OWO',
         imageAsset: 'assets/photos/story/2025/5.jpg',
       ),
       StoryStep(
-        sentence: '好可爱！我爱妳www',
+        sentence: '好可爱！怪不得我会爱上妳www',
         imageAsset: 'assets/photos/story/2025/6.jpg',
       ),
     ],
