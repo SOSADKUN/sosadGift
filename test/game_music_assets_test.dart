@@ -31,8 +31,9 @@ void main() {
         expect(path, endsWith('_clear.wav'));
         final bytes = File('assets/$path').readAsBytesSync();
         expect(String.fromCharCodes(bytes.take(4)), 'RIFF');
-        // Mono 22.05kHz 16-bit speech: both newly rendered messages are under 6s.
-        expect(bytes.length, lessThan(22050 * 2 * 6 + 10000));
+        // Mono 22.05kHz 16-bit speech; the second message is now longer.
+        final maxSeconds = path == TreasureHuntConfig.voiceAssets.first ? 6 : 15;
+        expect(bytes.length, lessThan(22050 * 2 * maxSeconds + 10000));
         expect(bytes.length, greaterThan(100000));
       }
     },

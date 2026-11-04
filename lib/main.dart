@@ -4,6 +4,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'views/app_flow.dart';
 import 'views/widgets/keep_screen_awake.dart';
 import 'controllers/supabase_service.dart';
+import 'views/screens/app_unlock_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,7 +52,7 @@ class MyApp extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         ),
       ),
-      home: const AppFlow(),
+      home: AppUnlockScreen(builder: (_) => const AppFlow()),
     );
   }
 }

@@ -71,7 +71,7 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2023/1.jpg',
       ),
       StoryStep(
-        sentence: '那时候妳问我哪个好看 我一猜就中了的诶！',
+        sentence: '那时候妳问我哪个好看 我一猜就中跟妳喜欢的一样的诶！',
         imageAsset: 'assets/photos/story/2023/1.2.jpg',
       ),
       StoryStep(
@@ -109,7 +109,7 @@ final List<StoryEntry> kStoryEntries = [
         imageAsset: 'assets/photos/story/2024/3.jpg',
       ),
       StoryStep(
-        sentence: '但至少我觉得 因为我们当下在享受 所以没记录那么多！ 而且 我们两 更近一步了！！ ',
+        sentence: '这年能找的的照片不多 但是我觉得 因为我们在享受 所以才没记录那么多！ 而且 我们两 更近一步了！！ ',
         imageAsset: 'assets/photos/story/2024/4.jpg',
       ),
     ],
@@ -141,6 +141,18 @@ final List<StoryEntry> kStoryEntries = [
       StoryStep(
         sentence: '好可爱！怪不得我会爱上妳www',
         imageAsset: 'assets/photos/story/2025/6.jpg',
+      ),
+      StoryStep(
+        sentence: '海～没有拍到房间！但是我们看到海OwO',
+        imageAsset: 'assets/photos/story/2025/7.jpeg',
+      ),
+      StoryStep(
+        sentence: '中途我们还飞下去芙蓉吃的 YAKINIKU！！！妳爱的tiramisu噗啊哈哈哈',
+        imageAsset: 'assets/photos/story/2025/8.jpeg',
+      ),
+      StoryStep(
+        sentence: '圆满结束的一年<3 今年又会是什么样的呢OwO',
+        imageAsset: 'assets/photos/story/2025/9.jpeg',
       ),
     ],
   ),

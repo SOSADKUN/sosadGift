@@ -14,7 +14,7 @@ class _DiaryOpenScreenState extends State<DiaryOpenScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _whiteFade = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 450),
   );
   late final CurvedAnimation _opacity = CurvedAnimation(
     parent: _whiteFade,

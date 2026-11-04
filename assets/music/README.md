@@ -1,6 +1,6 @@
 Treasure hunt phone audio:
 - voice1_mysterious_clear.wav: 生日快乐，小寿星。我们来玩个解密游戏吧。
-- voice2_mysterious_clear.wav: 上面这张图是唯一的线索。破解这场解密游戏吧。
+- voice2_gift_clue_clear.wav: 这张照片，是解密唯一的线索。而这次的解密，是为了得到妳的生日礼物哦！加油，去找到他吧！
 
 Current voices: macOS Reed (Chinese mainland, male), rate 145, normal pitch, no echo.
 Both current recordings contain speech only, with no appended music.

@@ -144,7 +144,7 @@ class _AppFlowState extends State<AppFlow> {
             : enteringHub
             ? 1000
             : enteringDiary
-            ? 1800
+            ? 500
             : 350,
       ),
       switchInCurve: Curves.easeInOutCubic,
@@ -153,10 +153,9 @@ class _AppFlowState extends State<AppFlow> {
         final isDiary =
             child.key == ValueKey(kFlowOrder.indexOf(FlowStep.storyRecap));
         if (enteringDiary && isDiary) {
-          // The new diary covers the outgoing video immediately. Its white
-          // veil holds briefly, then dissolves to reveal the page underneath.
+          // Reveal the diary immediately through a brief white dissolve.
           final reveal = animation.drive(
-            CurveTween(curve: const Interval(0.15, 1, curve: Curves.easeOut)),
+            CurveTween(curve: Curves.easeOut),
           );
           return Stack(
             fit: StackFit.expand,
