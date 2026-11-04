@@ -42,7 +42,10 @@ class _TreasureScannerScreenState extends State<TreasureScannerScreen> {
     setState(() => _takingPhoto = true);
     try {
       await _controller.stop();
-      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        requestFullMetadata: false,
+      );
       if (!mounted || photo == null) return;
       final capture = await _controller.analyzeImage(
         photo.path,

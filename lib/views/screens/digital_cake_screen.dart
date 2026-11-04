@@ -46,6 +46,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
   bool _holdingBlow = false;
   bool _micStarting = false;
   String? _micMessage;
+  bool _micPermissionDenied = false;
   int _micSession = 0;
   StreamSubscription<double>? _levelSub;
   bool _celebrationFinished = false;
@@ -106,6 +107,7 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
       _holdingBlow = true;
       _micStarting = true;
       _micMessage = null;
+      _micPermissionDenied = false;
     });
     bool active() =>
         mounted && _holdingBlow && !_blownOut && session == _micSession;
@@ -118,7 +120,10 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
       final status = await Permission.microphone.request();
       if (!active()) return;
       if (!status.isGranted) {
-        setState(() => _micMessage = '需要麦克风权限才能吹灭蜡烛');
+        setState(() {
+          _micMessage = '需要麦克风权限才能吹灭蜡烛';
+          _micPermissionDenied = true;
+        });
         return;
       }
       final recorder = _recorder ??= AudioRecorder();
@@ -128,6 +133,14 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
           encoder: AudioEncoder.pcm16bits,
           sampleRate: 16000,
           numChannels: 1,
+          iosConfig: IosRecordConfig(
+            categoryOptions: [
+              IosAudioCategoryOption.defaultToSpeaker,
+              IosAudioCategoryOption.allowBluetooth,
+              IosAudioCategoryOption.allowBluetoothA2DP,
+              IosAudioCategoryOption.mixWithOthers,
+            ],
+          ),
         ),
       );
       if (!active()) {
@@ -360,6 +373,11 @@ class _DigitalCakeScreenState extends State<DigitalCakeScreen>
                         Text(
                           _micMessage!,
                           style: const TextStyle(color: Colors.white70),
+                        ),
+                      if (_micPermissionDenied)
+                        TextButton(
+                          onPressed: openAppSettings,
+                          child: const Text('打开设置，允许麦克风'),
                         ),
                       Listener(
                         onPointerDown: (_) => _initMic(),
