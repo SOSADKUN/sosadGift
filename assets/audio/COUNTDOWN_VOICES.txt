@@ -1,6 +1,6 @@
 Generated English countdown recordings using installed macOS system voices.
 Birthday: Samantha (US English), rate 180; shortened silence and normalized volume.
-The 60-second birthday countdown uses English ten through one only.
+The 90-second birthday countdown uses English ten through one only.
 Earlier milestone recordings and countdown_0.wav are unused.
 The user-supplied countdown_last10.mp3 is no longer played.
 countdown_0.wav says Happy birthday! All countdown files now contain English.
@@ -8,4 +8,4 @@ Game openings: Rocko (English US), rate 230, lowered and mildly saturated.
 game_ready3/2/1/0.wav say THREE / TWO / ONE / START.
 Regeneration: python3 scripts/generate_countdown_audio.py (requires macOS say/afconvert).
 
-countdown_tick.wav: original 0.09-second electronic tick, once per second from 60 to 11.
+countdown_tick.wav: original 0.09-second electronic tick, once per second from 90 to 11.

@@ -48,7 +48,7 @@ void main() {
     expect(TreasureHuntConfig.acceptsQr('https://example.com'), isFalse);
   });
 
-  testWidgets('countdown completes once, only after sixty seconds', (
+  testWidgets('countdown completes once, only after ninety seconds', (
     tester,
   ) async {
     var now = DateTime(2026);
@@ -62,8 +62,8 @@ void main() {
         ),
       ),
     );
-    expect(find.text('60'), findsOneWidget);
-    now = now.add(const Duration(seconds: 59));
+    expect(find.text('90'), findsOneWidget);
+    now = now.add(const Duration(seconds: 89));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('1'), findsOneWidget);
     expect(completed, 0);

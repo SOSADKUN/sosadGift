@@ -26,7 +26,7 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
   );
   late final DateTime _deadline;
   Timer? _timer;
-  static const _durationSeconds = 60;
+  static const _durationSeconds = 90;
   int _seconds = _durationSeconds;
   bool _completed = false;
 
@@ -165,7 +165,7 @@ class _SurpriseCountdownScreenState extends State<SurpriseCountdownScreen>
             ),
             const SizedBox(height: 16),
             const Text(
-              '那就最后啦 闭上双眼倒数60秒～ 不能作弊哦',
+              '那就最后啦 闭上双眼倒数1分30秒～ 不能作弊哦',
               style: TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 36),

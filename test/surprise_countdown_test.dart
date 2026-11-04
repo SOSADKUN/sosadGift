@@ -38,7 +38,7 @@ class CountdownAudio implements AudioPlayer {
 }
 
 void main() {
-  testWidgets('60 seconds beep until eleven then speak English ten to one', (
+  testWidgets('90 seconds beep until eleven then speak English ten to one', (
     tester,
   ) async {
     var now = DateTime(2026, 11, 3);
@@ -58,7 +58,7 @@ void main() {
       ),
     );
     await tester.pump();
-    for (var n = 59; n >= 1; n--) {
+    for (var n = 89; n >= 1; n--) {
       now = now.add(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pump();
@@ -73,7 +73,7 @@ void main() {
       }
     }
     expect(players.first.asset, 'audio/countdown_tick.wav');
-    expect(players.first.plays, 50);
+    expect(players.first.plays, 80);
     expect(players.length, 11);
     expect(players.every((p) => !p.asset!.endsWith('.mp3')), isTrue);
     now = now.add(const Duration(seconds: 1));
